@@ -204,6 +204,27 @@ and eventually to `mapped` and `combined`.
 
 TODO circular dependencies, detecting them
 
+## Bacon notes
+
+### Pros
+
+Seems to do pretty much what I expected to do with this :)
+
+### Cons
+
+Seems big and complex
+
+stream.merge(...) and stream.combine(...) are not as readable as
+merge(stream1, stream2) and combine(stream1, stream2).
+
+API reference needs examples
+
+to .value
+
+.rewrite is cleaner than Bacon.Bus
+
+
+
 ## DOM events
 
 Sure enough,
