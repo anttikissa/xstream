@@ -1,4 +1,4 @@
-STREAM
+## STREAM
 
 A JS library for easy dataflow programming.
 
@@ -178,7 +178,7 @@ Should s1.zip(s2) be a shorthand for stream.zip(s1, s2)
 and same for combine() and possibly others?
 
 
-RE-WIRING A STREAM
+## Re-wiring a stream
 
 Conceptually, a stream consists of two parts: its identity, which consists of
 its value and its listeners, and its implementation, which dictates where its
@@ -204,6 +204,16 @@ and eventually to `mapped` and `combined`.
 
 TODO circular dependencies, detecting them
 
+
+## A crazy idea
+
+That streams would, by default, always broadcast their new value, even if the
+value didn't change
+
+What would that be called, "an eager stream"?
+
+s.eager = false
+
 ## Bacon notes
 
 ### Pros
@@ -223,6 +233,12 @@ to .value
 
 .rewrite is cleaner than Bacon.Bus
 
+HOW IS IT IMPLEMENTED?
+
+The implementation should be crystal clear and simple enough that you can
+include it in the first paragraph of the documentation.
+
+Are things pushed or are they pulled?
 
 
 ## DOM events
