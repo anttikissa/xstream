@@ -54,7 +54,7 @@ You can map streams into other streams.
 		console.log('s2 is', value);
 	});
 
-	s = 5; // -> 5; s2 is 10
+	s.set(5); // -> 5; s2 is 10
 
 And combine streams to make new streams.  Whenever one of the source streams
 changes, the resulting stream changes, too.
