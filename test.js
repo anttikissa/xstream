@@ -53,5 +53,12 @@
 	// have the wrong `this`
 	var log = console.log.bind(console);
 
-	console.log("log lines", console.lines);
+	var s2 = s.map(function(x) { return x * 2; });
+	s2.forEach(function(value) {
+		console.log('s2 is', value);
+	});
+
+	s.set(5); // -> 5; s2 is 10
+	assertPrinted('5');
+	assertPrinted('s2 is 10');
 

@@ -16,6 +16,14 @@ Stream.prototype = {
 				this.listeners[i](value);
 			}
 		}
+	},
+
+	map: function(f) {
+		var result = stream();
+		this.forEach(function(value) {
+			result.set(f(value));
+		});
+		return result;
 	}
 };
 
