@@ -23,11 +23,11 @@
 
 	function assertPrinted(str) {
 		if (str !== null) {
-			assert.is(console.lines[console.lines.length - 1], str);
+			var actual = console.lines.shift();
+			assert.is(actual, str);
 		} else {
 			assert.eq(console.lines, []);
 		}
-		console.lines = [];
 	}
 
 	var s = stream();
