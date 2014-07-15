@@ -1,0 +1,24 @@
+<!doctype html>
+<title>bacon tests</title>
+<script src='jquery-2.1.1.js'></script>
+<script src='Bacon.js'></script>
+<body>
+	<button id='up'>Up</button>
+	<button id='down'>Down</button>
+	<span id='counter'>0</span>
+
+	<script>
+
+		var up = $('#up').asEventStream('click');
+		var down = $('#down').asEventStream('click');
+
+		var counter = up.map(1).merge(down.map(-1)).
+			scan(0, function(x, y) { return x + y; });
+
+		counter.assign($('#counter'), 'text');
+
+		console.log('Got bacon');
+	</script>
+</body>
+
+
