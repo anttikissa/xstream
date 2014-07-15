@@ -15,6 +15,9 @@ var console = (function(origConsole) {
 				if (typeof arg === 'string') {
 					return arg;
 				}
+				if (typeof arg === 'function') {
+					return Object.prototype.toString.apply(arg);
+				}
 				return util.format(arg);
 			}).join(' '));
 		}

@@ -41,13 +41,21 @@ args.forEach(function(filename) {
 				push('(function() {');
 			}
 			if (testIdx >= 9) {
-				line = '//' + line;
+				push('//' + line);
+				prevLineType = 'code';
+				return;
 			}
 			if (wasEmptyCodeLine) {
 				push('');
 			}
 			if (!isEmpty) {
 				push(line);
+			}
+			var assertPrintedMatch = line.match(/\/\/ -> (.*)/);
+			if (assertPrintedMatch) {
+				assertPrintedMatch[1].split('; ').forEach(function(output) {
+					push("\tassertPrinted('" + output + "');");
+				});
 			}
 			prevLineType = 'code';
 		} else {
