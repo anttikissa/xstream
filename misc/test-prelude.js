@@ -29,3 +29,4 @@ function assertPrinted(str) {
 		assert.eq(console.lines, []);
 	}
 }
+

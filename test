@@ -1,4 +1,11 @@
-#!/bin/sh
+#!/bin/bash
 
-node test.js
+cd $(dirname $0)
+
+mkdir -p tmp
+# node test.js
+./mktest README.md > tmp/test.js
+echo Generated tmp/test.js from README.md.
+echo Running tmp/test.js...
+node tmp/test.js
 

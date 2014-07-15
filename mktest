@@ -1,0 +1,71 @@
+#!/usr/bin/env node
+// vim: set filetype=javascript:
+
+var fs = require('fs');
+
+var args = process.argv.slice(2);
+
+if (!args.length) {
+	console.log('Usage: mktest file ...');
+	process.exit(1);
+}
+
+console.log(args);
+
+var testLines = [];
+
+function push(line) {
+	var actual = line || '';
+
+	testLines.push(actual);
+}
+
+args.forEach(function(filename) {
+	var testIdx = 0;
+
+	testLines.push('// ' + filename);
+
+	var lines = fs.readFileSync(filename, 'utf8').split('\n');
+	lines.pop();
+
+	var prevLineType;
+	var wasEmptyCodeLine = false;
+	lines.forEach(function(line) {
+		var indented = !!line.match(/^\t/);
+		var followsCodeLine = prevLineType === 'code';
+		var isEmpty = line.trim() === '';
+		if (indented || (isEmpty && followsCodeLine)) {
+			if (prevLineType !== 'code') {
+				testIdx++;
+				push('// test ' + testIdx);
+				push('(function() {');
+			}
+			if (testIdx >= 9) {
+				line = '//' + line;
+			}
+			if (wasEmptyCodeLine) {
+				push('');
+			}
+			if (!isEmpty) {
+				push(line);
+			}
+			prevLineType = 'code';
+		} else {
+			if (prevLineType === 'code') {
+				push('})();');
+			}
+			prevLineType = 'comment';
+		}
+		wasEmptyCodeLine = followsCodeLine && isEmpty;
+	});
+	if (prevLineType === 'code') {
+		push('})();');
+	}
+});
+
+
+var testJs = fs.readFileSync('misc/test-prelude.js', 'utf8') +
+	testLines.join('\n');
+
+console.log(testJs);
+
