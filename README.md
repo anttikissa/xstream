@@ -12,7 +12,7 @@ From these two properties we can derive a multitude of applications.
 But first, let's see the API:
 
 	var stream = require('stream');
-	console.log(stream) // -> [Function: stream]
+	console.log(stream) // -> [object Function]
 
 So the main API andpoint is a function. The simplest way to invoke it is to call
 it with no arguments, which creates a stream.  
@@ -21,6 +21,7 @@ it with no arguments, which creates a stream.
 	
 A stream's value is 'undefined' by default.
 
+	var s = stream();
 	console.log(s.value); // -> undefined
 
 You could have specified an initial value, too.
@@ -29,16 +30,13 @@ You could have specified an initial value, too.
 
 You can listen for changes in a stream's value:
 
+	var s = stream();
 	s.forEach(function(value) {
 		console.log(value);
 	});
 
 	s.set(1); // -> 1
 	console.log(s.value); // -> 1
-
-By default, a stream only broadcasts its value if it changes.
-
-	s.set(1); // no effect
 
 For demonstration purposes, we'll be using a function that just logs its
 arguments, so let's give it a name:
@@ -47,8 +45,17 @@ arguments, so let's give it a name:
 	// have the wrong `this`
 	var log = console.log.bind(console);
 
+TODO is this true?
+By default, a stream only broadcasts its value if it changes.
+
+	var s = stream(1);
+	s.forEach(log);
+	s.set(1); // no effect
+
 You can map streams into other streams.
 
+	var s = stream();
+	s.forEach(log);
 	var s2 = s.map(function(x) { return x * 2; });
 	s2.forEach(function(value) {
 		console.log('s2 is', value);
@@ -61,7 +68,7 @@ changes, the resulting stream changes, too.
 
 	var s1 = stream(1);
 	var s2 = stream(1);
-	var s3 = stream(s1, s2, function(value1, value2) {
+	var s3 = stream.combine(s1, s2, function(value1, value2) {
 		return value1 * value2;
 	});
 	s3.forEach(log);
