@@ -8,10 +8,7 @@ var console = (function(origConsole) {
 		
 		log: function() {
 			var args = Array.prototype.slice.apply(arguments);
-			var argsCopy = args.slice();
-			argsCopy.unshift('[console]');
-			origConsole.log.apply(origConsole, argsCopy);
-			this.lines.push(args.map(function(arg) {
+			var line = args.map(function(arg) {
 				if (typeof arg === 'string') {
 					return arg;
 				}
@@ -19,10 +16,14 @@ var console = (function(origConsole) {
 					return Object.prototype.toString.apply(arg);
 				}
 				return util.format(arg);
-			}).join(' '));
+			}).join(' ');
+			this.lines.push(line);
+			origConsole.log.call(origConsole, '[console]', line);
 		}
 	}
 })(global.console);
+
+var log = console.log.bind(console);
 
 function assertPrinted(str) {
 	if (str !== null) {

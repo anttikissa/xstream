@@ -53,9 +53,14 @@ args.forEach(function(filename) {
 			}
 			var assertPrintedMatch = line.match(/\/\/ -> (.*)/);
 			if (assertPrintedMatch) {
-				assertPrintedMatch[1].split('; ').forEach(function(output) {
+				var matches = assertPrintedMatch[1].split('; ');
+				console.error(matches);
+				matches.forEach(function(output) {
 					push("\tassertPrinted('" + output + "');");
 				});
+			}
+			if (line.match(/\/\/ no effect/)) {
+				push("\tassertPrinted(null);");
 			}
 			prevLineType = 'code';
 		} else {
