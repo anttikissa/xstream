@@ -44,12 +44,16 @@ args.forEach(function(filename) {
 		if (indented || (isEmpty && followsCodeLine)) {
 			if (prevLineType !== 'code') {
 				testIdx++;
+				var testDescription = 'test ' + testIdx + ', line ' + idx +
+					' ' + prevComment.join(' ').replace(/\'/g, '\\\'').
+					trim().replace(/:$/, '');
 				push();
 				push('// test ' + testIdx + ', line ' + idx);
 				testLines.push('//');
 				prevComment.map(prepend('// ')).forEach(push);
 				prevComment = [];
 				push('(function() {');
+				push("\tglobal.console.log('" + testDescription + "');");
 			}
 			if (testIdx >= maxTest) {
 				push('//' + line);
