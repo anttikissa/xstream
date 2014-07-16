@@ -24,6 +24,10 @@ Stream.prototype = {
 			result.set(f(value));
 		});
 		return result;
+	},
+
+	toString: function() {
+		return 'stream(' + this.value + ')';
 	}
 };
 
