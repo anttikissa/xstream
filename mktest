@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 // vim: set filetype=javascript:
 
+var maxTest = 10;
+
 var fs = require('fs');
 
 var args = process.argv.slice(2);
@@ -49,7 +51,7 @@ args.forEach(function(filename) {
 				prevComment = [];
 				push('(function() {');
 			}
-			if (testIdx >= 9) {
+			if (testIdx >= maxTest) {
 				push('//' + line);
 				prevLineType = 'code';
 				return;
