@@ -59,6 +59,14 @@ You can listen for changes in a stream's value:
 	s.set(1); // -> 1
 	console.log(s.value); // -> 1
 
+Like `.set()`, `.forEach()` returns the set itself, so you can use them in the
+same expression:
+
+	var s = stream().forEach(function(value) {
+		console.log('s', value); 
+	}).set(1);
+	// -> s 1
+
 For demonstration purposes, we'll be using a function that just logs its
 arguments, so let's give it a name:
 
