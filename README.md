@@ -24,9 +24,31 @@ A stream's value is 'undefined' by default.
 	var s = stream();
 	console.log(s.value); // -> undefined
 
-You could have specified an initial value, too.
+You can set the value using `.set()`:
 
-	console.log(stream(123).value); // -> 123
+	var s = stream();
+	s.set(123);
+	console.log(s.value);
+	// -> 123
+
+`set` returns the stream itself,
+
+	var s = stream();
+	console.log(s.set(123) === s);
+	// -> true
+	
+so you could have written the previous example as:
+
+	var s = stream().set(123);
+	console.log(s.value);
+	// -> 123
+
+And to make it even simpler, `stream()` accepts an optional argument that 
+does it for you:
+
+	var s = stream(123);
+	console.log(s.value);
+	// -> 123
 
 You can listen for changes in a stream's value:
 
