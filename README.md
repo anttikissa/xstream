@@ -78,6 +78,10 @@ Wait a minute! Why did `.set()` wait until we installed the `.forEach()`
 callback?  Actually, `.set()` doesn't change the actual value, but
 schedules a /transaction/ instead.  
 
+	console.log(stream.tx); // -> []
+	var s = stream().set(1);
+	console.log(stream.tx); // -> [[xxx, 1]]
+
 For demonstration purposes, we'll be using a function that just logs its
 arguments, so let's give it a name:
 
