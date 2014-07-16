@@ -11,8 +11,8 @@ From these two properties we can derive a multitude of interesting applications.
 
 Let's take a look at the API:
 
-	var stream = require('stream');
-	console.log(stream) // -> [object Function]
+	var s = require('stream');
+	console.log(s) // -> [object Function]
 
 So the main API endpoint is a function. The simplest way to invoke it is
 to call it with no arguments, which creates a stream.  
@@ -31,20 +31,19 @@ You can set the value using `.set()`:
 	console.log(s.value);
 	// -> 123
 
-`set` returns the stream itself,
+`set`, like many other methods of `stream`, returns the stream itself:
 
 	var s = stream();
 	console.log(s.set(123) === s);
 	// -> true
 	
-so you could have written the previous example as:
+So you could have written the previous example as:
 
 	var s = stream().set(123);
 	console.log(s.value);
 	// -> 123
 
-And to make it even simpler, `stream()` accepts an optional argument that 
-does it for you:
+Or simply:
 
 	var s = stream(123);
 	console.log(s.value);
