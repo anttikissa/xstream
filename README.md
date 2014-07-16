@@ -14,7 +14,7 @@ Let's take a look at the API:
 	var stream = require('stream');
 	console.log(stream) // -> [object Function]
 
-So the main API andpoint is a function. The simplest way to invoke it is
+So the main API endpoint is a function. The simplest way to invoke it is
 to call it with no arguments, which creates a stream.  
 
 	var s = stream();
