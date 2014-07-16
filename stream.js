@@ -10,13 +10,17 @@ Stream.prototype = {
 	},
 
 	set: function(value) {
-		var changed = this.value !== value;
-		this.value = value;
-		if (changed) {
-			for (var i = 0, len = this.listeners.length; i < len; i++) {
-				this.listeners[i](value);
+		setImmediate(function() {
+			// TODO push to stream.tx
+			// instead of this
+			var changed = this.value !== value;
+			this.value = value;
+			if (changed) {
+				for (var i = 0, len = this.listeners.length; i < len; i++) {
+					this.listeners[i](value);
+				}
 			}
-		}
+		});
 
 		return this;
 	},
@@ -40,6 +44,17 @@ Stream.prototype = {
 
 var stream = function(initial) {
 	return new Stream(initial);
+};
+
+stream.tx = [];
+stream.commit = function() {
+	stream.tx.forEach(function(op) {
+		var target = op[0];
+		var value = op[1];
+		console.log('set target', target, 'to value', value);
+	});
+	stream.tx = [];
+	delete stream.txImmediate;
 };
 
 module.exports = stream;
