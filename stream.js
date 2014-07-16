@@ -6,6 +6,7 @@ function Stream(initial) {
 Stream.prototype = {
 	forEach: function(f) {
 		this.listeners.push(f);
+		return this;
 	},
 
 	set: function(value) {
