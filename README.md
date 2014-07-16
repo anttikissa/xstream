@@ -1,13 +1,13 @@
-## STREAM
+## streams.js
 
-A JS library for easy dataflow programming.
+Streams, flows, sources, sinks, nodes, whatever.  Figure out a good name.
 
 What's a stream?
 
 1. A stream has a value
-2. A stream can notify you whenever that value changes
+2. A stream can notify you whenever its value is updated
 
-From these two properties we can derive a multitude of applications.
+From these two properties we can derive a multitude of interesting applications.
 
 Let's take a look at the API:
 
@@ -67,7 +67,6 @@ arguments, so let's give it a name:
 	// have the wrong `this`
 	var log = console.log.bind(console);
 
-TODO is this true?
 By default, a stream only broadcasts its value if it changes.
 
 	var s = stream(1);
