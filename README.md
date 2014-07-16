@@ -9,13 +9,13 @@ What's a stream?
 
 From these two properties we can derive a multitude of applications.
 
-But first, let's see the API:
+Let's take a look at the API:
 
 	var stream = require('stream');
 	console.log(stream) // -> [object Function]
 
-So the main API andpoint is a function. The simplest way to invoke it is to call
-it with no arguments, which creates a stream.  
+So the main API andpoint is a function. The simplest way to invoke it is
+to call it with no arguments, which creates a stream.  
 
 	var s = stream();
 	
@@ -76,15 +76,15 @@ changes, the resulting stream changes, too.
 	s2.set(3); // -> 6
 
 // TODO should this be so?:
-Normally, streams only notify their listeners whenever their value changes.  But
-sometimes you don't care about the value, just about the notification.  In those
-cases you can trigger the notification manually:
+Normally, streams only notify their listeners whenever their value
+changes.  But sometimes you don't care about the value, just about the
+notification.  In those cases you can trigger the notification manually:
 
 	s.broadcast();
 	// -> s is 5; s2 is 10
 
-When can that be useful? For instance, if you are making a game and want a
-random number on every frame:
+When can that be useful? For instance, if you are making a game and want
+a random number on every frame:
 
 	var randomStream = stream.sample(function() {
 		// Produce a random digit
@@ -95,7 +95,8 @@ random number on every frame:
 	// -> prints a number 60 times per second
 
 You may have noticed that .map() and .forEach() are quite like the array
-functions of the same name.  Streams are like arrays in other respects, too.
+functions of the same name.  Streams are like arrays in other respects,
+too.
 
 But before that, let's introduce a third property of streams:
 
@@ -121,8 +122,8 @@ You can convert an array into a stream:
 	numbers.onEnd() { console.log('end'); }
 	// (on subsequent ticks) -> 1; 2; 3; 4; 5; end
 
-Or you can convert an array into a stream that broadcasts a new value every X
-milliseconds, using setInterval() internally:
+Or you can convert an array into a stream that broadcasts a new value
+every X milliseconds, using setInterval() internally:
 
 	var numbers2 = stream.fromArray([1,2,3,4,5], 100);
 	numbers2.forEach(function(value) { console.log(value); });
@@ -142,8 +143,9 @@ Ranges work, too:
 
 Several other array utilities work, too:
 
-`concat` combines several streams sequentially. Naturally, for this to work as
-expected, all of the concatenated streams must be finite, except for the last one.
+`concat` combines several streams sequentially. Naturally, for this to
+work as expected, all of the concatenated streams must be finite, except
+for the last one.
 
 	first = stream.fromArray([1,2,3]);
 	second = stream.fromArray([4,5]);
@@ -151,19 +153,19 @@ expected, all of the concatenated streams must be finite, except for the last on
 		console.log(value);
 	}); // -> 1; 2; 3; 4; 5
 
-`concat` is actually the reason why I first needed .onEnd() and .end(), but I
-figure they might be useful in other contexts, too.
+`concat` is actually the reason why I first needed .onEnd() and .end(),
+but I figure they might be useful in other contexts, too.
 
-You can `filter` a stream; the resulting stream only broadcasts the value if a
-predicate returns true.
+You can `filter` a stream; the resulting stream only broadcasts the
+value if a predicate returns true.
 
 	var oddNumbers = stream.fromRange(0).filter(function(value) {
 		return (value % 2);
 	}).forEach(log); // -> 1; 3; 5; ...
 
-`find` returns a stream whose value is undefined until a value is found in the
-stream, after which it ends immediately. If the original stream ends before a
-value is found, it ends without never yielding a value.
+`find` returns a stream whose value is undefined until a value is found
+in the stream, after which it ends immediately. If the original stream
+ends before a value is found, it ends without never yielding a value.
 
 	var numbers = stream.fromRange(0);
 	var foundStream = stream.find(function(value) { return value == 42; });
@@ -194,8 +196,8 @@ and same for combine() and possibly others?
 
 ## Transactions
 
-Stream updates are atomic: outside observers will never see inconsistent state.
-This is achieved using transactions.
+Stream updates are atomic: outside observers will never see inconsistent
+state.  This is achieved using transactions.
 
 Whenever you make a modification on a stream using `.set()`, it starts a
 transaction or continues a new one.
@@ -220,12 +222,13 @@ A transaction is simply a set of modifications that will be performed on nodes:
 	log(s.value); // -> 2
 	log(s2.value); // -> 4
 
-So you can observe state changes using `.forEach()` from the outside.  That's
-what the end-user should be using most of the time.  There's a similar method
-that allows us to observe state changes inside a transaction called
-`onUpdate()`.  This is the crown jewel of streams.js.  It allows you to write
-your own primitives, and in fact `map`, `reduce`, `filter` and a lot of other
-primitives in streams.js are implemented using `onUpdate()`.
+So you can observe state changes using `.forEach()` from the outside.
+That's what the end-user should be using most of the time.  There's a
+similar method that allows us to observe state changes inside a
+transaction called `onUpdate()`.  This is the crown jewel of streams.js.
+It allows you to write your own primitives, and in fact `map`, `reduce`,
+`filter` and a lot of other primitives in streams.js are implemented
+using `onUpdate()`.
 
 `onUpdate` observes state changes in one stream, and optionally lets you update
 another stream within the same transaction:
@@ -247,13 +250,13 @@ TODO should onUpdate() be called fromStream()? Probably!
 
 ## Re-wiring a stream
 
-Conceptually, a stream consists of two parts: its identity, which consists of
-its value and its listeners, and its implementation, which dictates where its
-value comes from.
+Conceptually, a stream consists of two parts: its identity, which
+consists of its value and its listeners, and its implementation, which
+dictates where its value comes from.
 
-When you create a stream and give it a name, possibly using it somewhere else,
-you give it a permanent, unchangeable identity. At the same time, it gets an
-implementation.
+When you create a stream and give it a name, possibly using it somewhere
+else, you give it a permanent, unchangeable identity. At the same time,
+it gets an implementation.
 
 	var someStream = stream(123);
 	var mapped = someStream.map(function(value) { return value * 2; });
@@ -266,16 +269,16 @@ example:
 
 	someStream.rewire(combine(s1, s2, f(v1, v2) { ... }));
 
-This changes causes changes in `s1` and `s2` to be propagated to `someStream`,
-and eventually to `mapped` and `combined`.
+This changes causes changes in `s1` and `s2` to be propagated to
+`someStream`, and eventually to `mapped` and `combined`.
 
 TODO circular dependencies, detecting them
 
 
 ## A crazy idea
 
-That streams would, by default, always broadcast their new value, even if the
-value didn't change
+That streams would, by default, always broadcast their new value, even
+if the value didn't change
 
 What would that be called, "an eager stream"?
 
@@ -302,8 +305,8 @@ to .value
 
 HOW IS IT IMPLEMENTED?
 
-The implementation should be crystal clear and simple enough that you can
-include it in the first paragraph of the documentation.
+The implementation should be crystal clear and simple enough that you
+can include it in the first paragraph of the documentation.
 
 Are things pushed or are they pulled?
 
