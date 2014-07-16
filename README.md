@@ -133,6 +133,13 @@ Ranges work, too:
 	var someNumbers = stream.fromRange(1, 5).forEach(log); // -> 1; 2; 3; 4; 5
 	var allIntegers = stream.fromRange(0).forEach(log); // -> 1; 2; 3; ...
 
+	// The third argument is the step
+	var someEvenNumbers = stream.fromRange(0, 10, 2).
+		forEach(log); // -> 2; 4; 6; 8; 10
+	// If you need to use step with infinite ranges, you can use Infinity
+	var allEvenNumbers = stream.fromRange(0, Infinity, 2).
+		forEach(log); // -> 2; 4; 6; 8; 10; ...
+
 Several other array utilities work, too:
 
 `concat` combines several streams sequentially. Naturally, for this to work as
@@ -183,6 +190,57 @@ zipWith() is actually the same as combine()
 
 Should s1.zip(s2) be a shorthand for stream.zip(s1, s2)
 and same for combine() and possibly others?
+
+
+## Transactions
+
+Stream updates are atomic: outside observers will never see inconsistent state.
+This is achieved using transactions.
+
+Whenever you make a modification on a stream using `.set()`, it starts a
+transaction or continues a new one.
+
+A transaction is simply a set of modifications that will be performed on nodes:
+
+	var s = stream(1);
+	var s2 = s.map(double);
+	log(stream.tx); // -> []
+	s.set(2);
+	log(s.value); // -> undefined
+	log(s2.value); // -> undefined
+
+	s.forEach(log);
+	s2.forEach(log);
+
+	log(stream.tx); // -> [stream(undefined), 1]
+
+	// You can commit a transaction manually:
+	stream.commit(); // -> 2; 4
+	log(stream.tx); // -> []
+	log(s.value); // -> 2
+	log(s2.value); // -> 4
+
+So you can observe state changes using `.forEach()` from the outside.  That's
+what the end-user should be using most of the time.  There's a similar method
+that allows us to observe state changes inside a transaction called
+`onUpdate()`.  This is the crown jewel of streams.js.  It allows you to write
+your own primitives, and in fact `map`, `reduce`, `filter` and a lot of other
+primitives in streams.js are implemented using `onUpdate()`.
+
+`onUpdate` observes state changes in one stream, and optionally lets you update
+another stream within the same transaction:
+
+	var s = stream.fromRange(0);
+	var oddNumbersTimesThree = stream();
+	var s2 = s.onUpdate(value, function(set) {
+		if (value % 2) {
+			setS2(value * 3);
+		}
+	});
+
+	s.forEach(logWithPrefix('s'));
+	s2.forEach(logWithPrefix('s2'));
+	// -> s 1; s2 3; s 2; s 3; s2 9; s 4; s 5; s2 15; ...
 
 
 ## Re-wiring a stream
