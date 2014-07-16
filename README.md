@@ -238,10 +238,12 @@ another stream within the same transaction:
 		}
 	});
 
+
 	s.forEach(logWithPrefix('s'));
 	s2.forEach(logWithPrefix('s2'));
 	// -> s 1; s2 3; s 2; s 3; s2 9; s 4; s 5; s2 15; ...
 
+TODO should onUpdate() be called fromStream()? Probably!
 
 ## Re-wiring a stream
 
