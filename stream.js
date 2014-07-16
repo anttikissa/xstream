@@ -16,6 +16,12 @@ Stream.prototype = {
 				this.listeners[i](value);
 			}
 		}
+
+		return this;
+	},
+
+	fromStream: function(updater) {
+		
 	},
 
 	map: function(f) {
