@@ -67,6 +67,17 @@ same expression:
 	}).set(1);
 	// -> s 1
 
+The order of `.set() and `.forEach()` doesn't matter:
+
+	var s = stream().set(2).forEach(function(value) {
+		console.log('s', value); 
+	});
+	// -> s 2
+
+Wait a minute! Why did `.set()` wait until we installed the `.forEach()`
+callback?  Actually, `.set()` doesn't change the actual value, but
+schedules a /transaction/ instead.  
+
 For demonstration purposes, we'll be using a function that just logs its
 arguments, so let's give it a name:
 
