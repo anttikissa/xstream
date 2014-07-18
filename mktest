@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // vim: set filetype=javascript:
 
-var maxTest = 13;
+var minTest = 1;
+var maxTest = 15;
 
 var fs = require('fs');
 
@@ -32,6 +33,7 @@ args.forEach(function(filename) {
 	var wasEmptyCodeLine = false;
 	var wasEmptyCommentLine = false;
 	var prevComment = [];
+	var insideFunction = false;
 	function prepend(prefix) { return function(s) { return prefix + s; } }
 	lines.forEach(function(line, idx) {
 		idx = idx + 1;
@@ -50,10 +52,18 @@ args.forEach(function(filename) {
 				testLines.push('//');
 				prevComment.map(prepend('// ')).forEach(push);
 				prevComment = [];
-				push('(function() {');
-				push("\tglobal.console.log('" + testDescription + "');");
+				push('(function(console) {');
+				var enabled = minTest <= testIdx && testIdx <= maxTest;
+				if (enabled) {
+					push("\tglobal.console.log('" + testDescription + "');");
+				}
 			}
-			if (testIdx >= maxTest) {
+			if (line.match('// later')) {
+				insideFunction = true;
+				push('\tlater(function() {');
+			}
+			var enabled = minTest <= testIdx && testIdx <= maxTest;
+			if (!enabled) {
 				push('//' + line);
 				prevLineType = 'code';
 				return;
@@ -68,16 +78,20 @@ args.forEach(function(filename) {
 			if (assertPrintedMatch) {
 				var matches = assertPrintedMatch[1].split('; ');
 				matches.forEach(function(output) {
-					push("\tassertPrinted('" + output + "');");
+					push("\tassertPrinted(console, '" + output + "');");
 				});
 			}
 			if (line.match(/\/\/ no effect/)) {
-				push("\tassertPrinted(null);");
+				push("\tassertPrinted(console, null);");
 			}
 			prevLineType = 'code';
 		} else {
 			if (prevLineType === 'code') {
-				push('})();');
+				if (insideFunction) {
+					insideFunction = false;
+					push('\t});');
+				}
+				push('})(console());');
 			}
 			if (wasEmptyCommentLine) {
 				prevComment = [];
@@ -89,7 +103,7 @@ args.forEach(function(filename) {
 		wasEmptyCommentLine = followsCommentLine && isEmpty;
 	});
 	if (prevLineType === 'code') {
-		push('})();');
+		push('})(console());');
 	}
 });
 

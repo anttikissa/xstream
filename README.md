@@ -22,16 +22,34 @@ to call it with no arguments, which creates a stream.
 A stream's value is 'undefined' by default.
 
 	var s = stream();
+	// no effect
 	console.log(s.value); // -> undefined
 
-You can set the value using `.set()`:
+You can set the value using `.set()`, but it won't be set immediately.
+Instead, it creates a transaction which will be committed after the
+current call stack exits:
 
 	var s = stream();
-	s.set(123);
+	s.set(1);
 	console.log(s.value);
-	// -> 123
+	// -> undefined
 
-`set`, like many other methods of `stream`, returns the stream itself:
+	later(function() {
+		console.log(s.value);
+		// -> 1
+	});
+
+`later` is defined as:
+
+	function later(f) {
+		setTimeout(f, 1);
+	}
+
+Internally, streams use `setImmediate` or a similar mechanism to
+schedule the transaction.
+
+Back to `set`. Like many other methods of `stream`, it returns the
+stream itself:
 
 	var s = stream();
 	console.log(s.set(123) === s);
@@ -39,15 +57,19 @@ You can set the value using `.set()`:
 	
 So you could have written the previous example as:
 
-	var s = stream().set(123);
-	console.log(s.value);
-	// -> 123
+	var s = stream().set(2);
+	later(function() {
+		console.log(s.value);
+		// -> 2
+	});
 
 Or simply:
 
 	var s = stream(123);
-	console.log(s.value);
-	// -> 123
+	later(function() {
+		console.log(s.value);
+		// -> 123
+	});
 
 You can listen for changes in a stream's value:
 
@@ -56,7 +78,9 @@ You can listen for changes in a stream's value:
 		console.log(value);
 	});
 
-	s.set(1); // -> 1
+	s.set(1);
+	// later:
+	// -> 1
 	console.log(s.value); // -> 1
 
 Like `.set()`, `.forEach()` returns the set itself, so you can use them in the
@@ -65,18 +89,24 @@ same expression:
 	var s = stream().forEach(function(value) {
 		console.log('s', value); 
 	}).set(1);
+	// later:
 	// -> s 1
 
-The order of `.set() and `.forEach()` doesn't matter:
+The order of `.set() and `.forEach()` doesn't matter, because the
+transaction only happens later:
 
 	var s = stream().set(2).forEach(function(value) {
 		console.log('s', value); 
 	});
+	// later:
 	// -> s 2
 
-Wait a minute! Why did `.set()` wait until we installed the `.forEach()`
-callback?  Actually, `.set()` doesn't change the actual value, but
-schedules a /transaction/ instead.  
+How do transactions work?
+
+There's `stream.tx`, which is the current transaction if it exists.
+
+Alternatively, you can call stream.transaction() to get the current
+transaction, or start a new one if there isn't one already.
 
 	console.log(stream.tx); // -> []
 	var s = stream().set(1);

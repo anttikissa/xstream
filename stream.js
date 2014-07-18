@@ -10,14 +10,15 @@ Stream.prototype = {
 	},
 
 	set: function(value) {
+		var that = this;
 		setImmediate(function() {
 			// TODO push to stream.tx
 			// instead of this
-			var changed = this.value !== value;
-			this.value = value;
+			var changed = that.value !== value;
+			that.value = value;
 			if (changed) {
-				for (var i = 0, len = this.listeners.length; i < len; i++) {
-					this.listeners[i](value);
+				for (var i = 0, len = that.listeners.length; i < len; i++) {
+					that.listeners[i](value);
 				}
 			}
 		});
