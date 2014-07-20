@@ -41,8 +41,12 @@ Transaction.prototype.commit = function() {
 	var updated = {};
 	var updatedOrdered = [];
 
-	for (var i = 0, len = this.ops.length; i < len; i++) {
+	for (var i = 0, opsLen = this.ops.length; i < opsLen; i++) {
+//		console.log('this.ops is', this.ops);
+//		console.log('this.ops.length is', this.ops.length);
+
 		var op = this.ops[i];
+//		console.log('op is', this.ops[i]);
 		var s = op[0];
 		var value = op[1];
 
@@ -57,7 +61,7 @@ Transaction.prototype.commit = function() {
 			updated[s.id] = true;
 		}
 
-		for (var j = 0, len = s.children.length; j < len; j++) {
+		for (var j = 0, childrenLen = s.children.length; j < childrenLen; j++) {
 			var dependency = s.children[j];
 			var child = dependency[0];
 			var f = dependency[1];
