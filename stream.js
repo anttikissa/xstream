@@ -13,9 +13,18 @@ function keys(o) {
 	return keys;
 }
 
+// Do `f` soon. Return a function that can be called to cancel the
+// the deferred call.
+function defer(f) {
+	var immediate = setImmediate(f);
+	return function() {
+		clearImmediate(immediate);
+	};
+}
+
 function Transaction() {
 	var that = this;
-	this.immediate = setImmediate(function() {
+	this.cancel = defer(function() {
 		that.commit();
 	});
 	this.ops = [];
@@ -30,8 +39,8 @@ Transaction.prototype.set = function(stream, value) {
 }
 
 Transaction.prototype.commit = function() {
-	if (this.immediate) {
-		clearImmediate(this.immediate);
+	if (this.cancel) {
+		this.cancel();
 	}
 
 	if (stream.tx === this) {
@@ -188,11 +197,11 @@ stream.fromArray = function(array) {
 		if (array.length) {
 			result.set(array.shift());
 
-			setImmediate(update);
+			defer(update);
 		}
 	};
 
-	setImmediate(update);
+	defer(update);
 	return result;
 };
 

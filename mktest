@@ -2,7 +2,7 @@
 // vim: set filetype=javascript:
 
 var minTest = 1;
-var maxTest = 18;
+var maxTest = 19;
 
 var fs = require('fs');
 
@@ -111,7 +111,6 @@ args.forEach(function(filename) {
 		push(afterFunction);
 	}
 });
-
 
 var testJs = fs.readFileSync('misc/test-prelude.js', 'utf8') +
 	testLines.join('\n');
