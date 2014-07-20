@@ -182,6 +182,20 @@ stream.transaction = function() {
 	return stream.tx || (stream.tx = new Transaction());
 };
 
+stream.fromArray = function(array) {
+	var result = stream();
+	var update = function() {
+		if (array.length) {
+			result.set(array.shift());
+
+			setImmediate(update);
+		}
+	};
+
+	setImmediate(update);
+	return result;
+};
+
 // Declares `child` to be dependent on `parent`.
 //
 // parent: stream

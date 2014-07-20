@@ -174,6 +174,18 @@ Transitive dependencies work:
 	// later:
 	// -> 4
 
+You can convert an array into a stream:
+
+	var numbers = stream.fromArray([1,2,3,4,5]);
+	numbers.forEach(log);
+//	numbers.onEnd(function(value) { console.log('end'); });
+	// later:
+	// -> 1; 2; 3; 4; 5; end
+
+Streams can be filtered, like arrays:
+
+	TODO
+
 And combine streams to make new streams.  Whenever one of the source streams
 changes, the resulting stream changes, too.
 
@@ -225,13 +237,6 @@ calling `stream.onEnd()`.
 	log(s3.value); // -> 2
 	// but it won't broadcast its value to listeners
 	s3.set(3); // no effect
-
-You can convert an array into a stream:
-
-	var numbers = stream.fromArray([1,2,3,4,5]);
-	numbers.forEach(value) { console.log(value); }
-	numbers.onEnd() { console.log('end'); }
-	// (on subsequent ticks) -> 1; 2; 3; 4; 5; end
 
 Or you can convert an array into a stream that broadcasts a new value
 every X milliseconds, using setInterval() internally:
