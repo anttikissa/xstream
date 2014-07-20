@@ -1,7 +1,7 @@
 var util = require('util');
 var stream = require('../stream');
 
-var consoleId = 0;
+var consoleId = 1;
 
 var console = function(test) {
 	return (function(origConsole) {

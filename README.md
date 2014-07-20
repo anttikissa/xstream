@@ -178,13 +178,20 @@ You can convert an array into a stream:
 
 	var numbers = stream.fromArray([1,2,3,4,5]);
 	numbers.forEach(log);
-//	numbers.onEnd(function(value) { console.log('end'); });
+	//	numbers.onEnd(function(value) { console.log('end'); });
 	// later:
-	// -> 1; 2; 3; 4; 5; end
+	// -> 1; 2; 3; 4; 5
 
 Streams can be filtered, like arrays:
 
-	TODO
+	var numbers = stream.fromArray([1,2,3,4,5,6,7,8,9,10]);
+	var oddNumbers = numbers.filter(function(value) {
+		return value % 2;
+	});
+	//	numbers.forEach(function(value) { console.log('nums', value); });
+	oddNumbers.forEach(log);
+	// later:
+	// -> 1; 3; 5; 7; 9
 
 And combine streams to make new streams.  Whenever one of the source streams
 changes, the resulting stream changes, too.
