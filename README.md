@@ -163,6 +163,17 @@ You can map streams into other streams.
 	// later:
 	// -> 10; s2 is 20
 
+Transitive dependencies work:
+
+	var s = stream();
+	var s2 = s.map(function(x) { return x + 1; });
+	var s3 = s2.map(function(x) { return x * 2; });
+
+	s3.forEach(log);
+	s.set(1);
+	// later:
+	// -> 4
+
 And combine streams to make new streams.  Whenever one of the source streams
 changes, the resulting stream changes, too.
 

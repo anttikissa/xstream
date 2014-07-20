@@ -55,25 +55,25 @@ Transaction.prototype.commit = function() {
 
 		s.newValue = op[1];
 
-		if (!updated[s.id]) {
-//			console.log('stream', s.id, 'was updated');
-			updatedOrdered.push(s);
-			updated[s.id] = true;
+		function updateStream(s) {
+			if (!updated[s.id]) {
+				updatedOrdered.push(s);
+				updated[s.id] = true;
+			}
+
+			for (var j = 0, childrenLen = s.children.length; j < childrenLen; j++) {
+				var dependency = s.children[j];
+				var child = dependency[0];
+				var f = dependency[1];
+				f.call(child, s.newValue, function(value) {
+					child.newValue = value;
+
+					updateStream(child);
+				});
+			}
 		}
 
-		for (var j = 0, childrenLen = s.children.length; j < childrenLen; j++) {
-			var dependency = s.children[j];
-			var child = dependency[0];
-			var f = dependency[1];
-			f.call(child, s.newValue, function(value) {
-				child.newValue = value;
-				if (!updated[child.id]) {
-//					console.log('child ', child.id, 'was updated');
-					updatedOrdered.push(child);
-					updated[child.id] = true;
-				}
-			});
-		}
+		updateStream(s);
 	}
 
 	for (var i = 0, len = updatedOrdered.length; i < len; i++) {
