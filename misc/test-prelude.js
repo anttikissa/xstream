@@ -1,9 +1,13 @@
 var util = require('util');
 var stream = require('../stream');
 
+var consoleId = 0;
+
 var console = function(test) {
 	return (function(origConsole) {
 		return {
+			id: consoleId++,
+
 			lines: [],
 			
 			log: function() {
@@ -18,7 +22,7 @@ var console = function(test) {
 					return util.format(arg);
 				}).join(' ');
 				this.lines.push(line);
-				origConsole.log.call(origConsole, '[console]', line);
+				origConsole.log.call(origConsole, '[console ' + this.id + ']', line);
 			},
 
 			test: test
@@ -43,9 +47,7 @@ function later(f) {
 	setTimeout(f, 10);
 }
 
-var i = 0;
 function assertPrinted(console, str) {
-	var id = i++;
 	var stack = new Error().stack;
 	if (str !== null) {
 		var actual = console.lines.shift();
