@@ -96,8 +96,12 @@ Transaction.prototype.commit = function() {
 function Stream(initial) {
 	this.listeners = []; // 'external' listeners
 	this.children = []; // 'internal' listeners
-	this.value = initial;
+	this.value = undefined;
 	this.id = stream.nextId++;
+
+	if (initial !== undefined) {
+		this.set(initial);
+	}
 };
 
 Stream.prototype = {

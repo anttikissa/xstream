@@ -57,14 +57,19 @@ stream itself:
 So you could have written the previous example as:
 
 	var s = stream().set(2);
+	console.log(s.value);
+	// -> undefined
 	later(function() {
 		console.log(s.value);
 		// -> 2
 	});
 
-Or simply:
+Or simply use the constructor `stream(value)`, which triggers
+`set(value)` (if `value` is defined):
 
 	var s = stream(123);
+	console.log(s.value);
+	// -> undefined
 	later(function() {
 		console.log(s.value);
 		// -> 123
@@ -193,25 +198,28 @@ Streams can be filtered, like arrays:
 	// later:
 	// -> 1; 3; 5; 7; 9
 
-And combine streams to make new streams.  Whenever one of the source streams
-changes, the resulting stream changes, too.
+You can combine streams to make new streams.  Whenever one of the source
+streams changes, the resulting stream changes, too.
 
-	var s1 = stream(1);
-	var s2 = stream(1);
-	var s3 = stream.combine(s1, s2, function(value1, value2) {
-		return value1 * value2;
-	});
-	s3.forEach(log);
-	s1.set(2); // -> 2
-	s2.set(3); // -> 6
+//	var s1 = stream(1);
+//	var s2 = stream(1);
+//	var s3 = stream.combine(s1, s2, function(value1, value2) {
+//		return value1 * value2;
+//	});
+//	s3.forEach(log);
+//	s1.set(2); // -> 2
+//	s2.set(3); // -> 6
 
-// TODO should this be so?:
+// TODO is there any sense in this?
 Normally, streams only notify their listeners whenever their value
 changes.  But sometimes you don't care about the value, just about the
 notification.  In those cases you can trigger the notification manually:
 
+	var s = stream();
+	s.forEach(function() { console.log('ping'); });
+	s.forEach(function() { console.log('pong'); });
 	s.broadcast();
-	// -> s is 5; s2 is 10
+	// -> ping; pong
 
 When can that be useful? For instance, if you are making a game and want
 a random number on every frame:
