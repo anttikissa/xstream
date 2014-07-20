@@ -22,7 +22,6 @@ to call it with no arguments, which creates a stream.
 A stream's value is 'undefined' by default.
 
 	var s = stream();
-	// no effect
 	console.log(s.value); // -> undefined
 
 You can set the value using `.set()`, but it won't be set immediately.
@@ -108,9 +107,9 @@ There's `stream.tx`, which is the current transaction if it exists.
 Alternatively, you can call stream.transaction() to get the current
 transaction, or start a new one if there isn't one already.
 
-	console.log(stream.tx); // -> []
-	var s = stream().set(1);
-	console.log(stream.tx); // -> [[xxx, 1]]
+	//console.log(stream.tx); // x-> []
+	//var s = stream().set(1);
+	//console.log(stream.tx); // x-> [[xxx, 1]]
 
 For demonstration purposes, we'll be using a function that just logs its
 arguments, so let's give it a name:
@@ -119,11 +118,33 @@ arguments, so let's give it a name:
 	// have the wrong `this`
 	var log = console.log.bind(console);
 
-By default, a stream only broadcasts its value if it changes.
+A stream broadcasts its value always when a new value is set, even if
+it's the same as the old value:
 
-	var s = stream(1);
+	var s = stream();
 	s.forEach(log);
-	s.set(1); // no effect
+	s.set(1);
+	setTimeout(function() {
+		// -> 1
+		s.set(1);
+		setTimeout(function() {
+			// -> 1
+		}, 10);
+	}, 10);
+
+However you can get a stream that only broadcasts its value when it
+changes with `stream.uniq()` (similar to Unix tool `uniq(1)`)
+
+	var s = stream();
+	s.uniq().forEach(log);
+	s.set(1);
+	setTimeout(function() {
+		// -> 1
+		s.set(1);
+		setTimeout(function() {
+			// -> 1
+		}, 10);
+	}, 10);
 
 You can map streams into other streams.
 
@@ -277,31 +298,25 @@ transaction or continues a new one.
 
 A transaction is simply a set of modifications that will be performed on nodes:
 
-	var s = stream(1);
-	var s2 = s.map(double);
-	log(stream.tx); // -> []
-	s.set(2);
-	log(s.value); // -> undefined
-	log(s2.value); // -> undefined
+	//var s = stream(1);
+	//var s2 = s.map(double);
+	//log(stream.tx); // -> []
+	//s.set(2);
+	//log(s.value); // -> undefined
+	//log(s2.value); // -> undefined
 
-	s.forEach(log);
-	s2.forEach(log);
+	//s.forEach(log);
+	//s2.forEach(log);
 
-	log(stream.tx); // -> [stream(undefined), 1]
+	//log(stream.tx); // -> [stream(undefined), 1]
 
 	// You can commit a transaction manually:
-	stream.commit(); // -> 2; 4
-	log(stream.tx); // -> []
-	log(s.value); // -> 2
-	log(s2.value); // -> 4
+	//stream.commit(); // -> 2; 4
+	//log(stream.tx); // -> []
+	//log(s.value); // -> 2
+	//log(s2.value); // -> 4
 
-So you can observe state changes using `.forEach()` from the outside.
-That's what the end-user should be using most of the time.  There's a
-similar method that allows us to observe state changes inside a
-transaction called `onUpdate()`.  This is the crown jewel of streams.js.
-It allows you to write your own primitives, and in fact `map`, `reduce`,
-`filter` and a lot of other primitives in streams.js are implemented
-using `onUpdate()`.
+TODO write about `dependency` instead
 
 `onUpdate` observes state changes in one stream, and optionally lets you update
 another stream within the same transaction:
@@ -313,7 +328,6 @@ another stream within the same transaction:
 			setS2(value * 3);
 		}
 	});
-
 
 	s.forEach(logWithPrefix('s'));
 	s2.forEach(logWithPrefix('s2'));

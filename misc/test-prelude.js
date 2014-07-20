@@ -1,7 +1,7 @@
 var util = require('util');
 var stream = require('../stream');
 
-var console = function() {
+var console = function(test) {
 	return (function(origConsole) {
 		return {
 			lines: [],
@@ -19,15 +19,22 @@ var console = function() {
 				}).join(' ');
 				this.lines.push(line);
 				origConsole.log.call(origConsole, '[console]', line);
-			}
+			},
+
+			test: test
 		}
 	})(global.console);
 }
 
-// var log = console.log.bind(console);
+function log(console) {
+	return console.log.bind(console);
+}
 
-function fail(message, stack) {
+function fail(message, stack, console) {
 	global.console.log(message);
+	if (console.test) {
+		global.console.log("Failing test:", console.test);
+	}
 	global.console.log("Original stacktrace: " + stack);
 	process.exit(1);
 }
@@ -43,12 +50,12 @@ function assertPrinted(console, str) {
 	if (str !== null) {
 		var actual = console.lines.shift();
 		if (actual !== str) {
-			fail("Expected '" + str + "', got '" + actual + "'", stack);
+			fail("Expected '" + str + "', got '" + actual + "'", stack, console);
 		}
 	} else {
 		if (console.lines.length) {
 			fail("Expected nothing, console output was " +
-				JSON.stringify(console.lines), stack);
+				JSON.stringify(console.lines), stack, console);
 		}
 	}
 }
