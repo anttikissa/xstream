@@ -2,7 +2,7 @@
 // vim: set filetype=javascript:
 
 var minTest = 1;
-var maxTest = 15;
+var maxTest = 16;
 
 var fs = require('fs');
 
@@ -33,7 +33,7 @@ args.forEach(function(filename) {
 	var wasEmptyCodeLine = false;
 	var wasEmptyCommentLine = false;
 	var prevComment = [];
-	var insideFunction = false;
+	var insideFunction = 0;
 	function prepend(prefix) { return function(s) { return prefix + s; } }
 	var afterFunction = '';
 	lines.forEach(function(line, idx) {
@@ -62,7 +62,7 @@ args.forEach(function(filename) {
 				}
 			}
 			if (line.match('// later')) {
-				insideFunction = true;
+				insideFunction++;
 				push('\tlater(function() {');
 			}
 			var enabled = minTest <= testIdx && testIdx <= maxTest;
@@ -92,9 +92,9 @@ args.forEach(function(filename) {
 			prevLineType = 'code';
 		} else {
 			if (prevLineType === 'code') {
-				if (insideFunction) {
-					insideFunction = false;
+				while (insideFunction) {
 					push('\t});');
+					insideFunction--;
 				}
 				push(afterFunction);
 			}
