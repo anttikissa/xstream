@@ -54,7 +54,8 @@ args.forEach(function(filename) {
 				prevComment.map(prepend('// ')).forEach(push);
 				prevComment = [];
 				push('(function(console) {');
-				afterFunction = '})(console(\'' + testDescription + '\'));';
+				afterFunction = '\tstream.transaction().commit();\n' + 
+					'})(console(\'' + testDescription + '\'));';
 				var enabled = minTest <= testIdx && testIdx <= maxTest;
 				if (enabled) {
 					push("\tglobal.console.log('" + testDescription + "');");

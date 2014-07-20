@@ -142,7 +142,7 @@ changes with `stream.uniq()` (similar to Unix tool `uniq(1)`)
 		// -> 1
 		s.set(1);
 		setTimeout(function() {
-			// -> 1
+			// no effect
 		}, 10);
 	}, 10);
 

@@ -17,37 +17,66 @@ function Transaction() {
 	var that = this;
 	this.immediate = setImmediate(function() {
 		that.commit();
-		if (stream.tx === that) {
-			delete stream.tx;
-		}
 	});
 	this.ops = [];
 }
 
 Transaction.prototype.set = function(stream, value) {
+//	console.log('tx set', stream.id, 'to', value);
+//	console.log('tx set: already got ops ', this.ops.map(function(op) {
+//		return "set s" + op[0].id + " to " + op[1];
+//	}));
 	this.ops.push([stream, value]);
 }
 
 Transaction.prototype.commit = function() {
+	if (this.immediate) {
+		clearImmediate(this.immediate);
+	}
+
+	if (stream.tx === this) {
+		delete stream.tx;
+	}
+
 	var updated = {};
 	var updatedOrdered = [];
 
 	for (var i = 0, len = this.ops.length; i < len; i++) {
 		var op = this.ops[i];
-		var stream = op[0];
+		var s = op[0];
 		var value = op[1];
 
 		// TODO update values with topological sort and magic
-		
-		stream.value = op[1];
-		if (!updated[stream.id]) {
-			updatedOrdered.push(stream);
-			updated[stream.id] = true;
+		// instead of this, which is a bit simplistic
+
+		s.newValue = op[1];
+
+		if (!updated[s.id]) {
+//			console.log('stream', s.id, 'was updated');
+			updatedOrdered.push(s);
+			updated[s.id] = true;
+		}
+
+		for (var j = 0, len = s.children.length; j < len; j++) {
+			var dependency = s.children[j];
+			var child = dependency[0];
+			var f = dependency[1];
+			f.call(child, s.newValue, function(value) {
+				child.newValue = value;
+				if (!updated[child.id]) {
+//					console.log('child ', child.id, 'was updated');
+					updatedOrdered.push(child);
+					updated[child.id] = true;
+				}
+			});
 		}
 	}
 
-	for (var i = 0, len = this.ops.length; i < len; i++) {
-		updatedOrdered[i].broadcast();
+	for (var i = 0, len = updatedOrdered.length; i < len; i++) {
+		var updatedStream = updatedOrdered[i];
+		updatedStream.value = updatedStream.newValue;
+		delete updatedStream.newValue;
+		updatedStream.broadcast();
 	}
 };
 
@@ -75,9 +104,18 @@ Stream.prototype = {
 
 	// Set my value to `value`. The value will be updated, and listeners will
 	// be notified, when the next transaction is committed.
-	set: function(value) {
+	set: function(value, after) {
+		var that = this;
+		
+		if (after) {
+			setTimeout(function() {
+				var tx = stream.transaction();
+				tx.set(that, value);
+			}, after);
+			return this;
+		}
 		var tx = stream.transaction();
-		tx.set(this, value);
+		tx.set(that, value);
 		return this;
 	},
 
@@ -89,11 +127,9 @@ Stream.prototype = {
 	// s1: 1 1 2 2 5 6 6
 	// s2: 2 2 3 3 6 7 7
 	map: function(f) {
-		var result = stream();
-		stream.dependency(this, result, function(newValue, setter) {
+		return stream.dependency(this, stream(), function(newValue, setter) {
 			setter(f(newValue));
 		});
-		return result;
 	},
 
 	// Returns a stream whose value is updated with `x` whenever this 
@@ -104,13 +140,11 @@ Stream.prototype = {
 	// s1: 1 1 2 2 5 6 6
 	// s2: 1 1     5
 	filter: function(f) {
-		var result = stream();
-		stream.dependency(this, result, function(newValue, setter) {
+		return stream.dependency(this, stream(), function(newValue, setter) {
 			if (f(newValue)) {
 				setter(newValue);
 			}
 		});
-		return result;
 	},
 
 	// Returns a stream whose value is the same as this stream's value,
@@ -121,13 +155,12 @@ Stream.prototype = {
 	// s1: 1 1 2 2 5 6 6 
 	// s2: 1   2   5 6
 	uniq: function() {
-		var result = stream();
-		stream.dependency(this, result, function(newValue, setter) {
-			if (result.value !== newValue) {
+		return stream.dependency(this, stream(), function(newValue, setter) {
+//			console.log('dependency called with', newValue);
+			if (this.value !== newValue) {
 				setter(newValue);
 			}
 		});
-		return result;
 	},
 
 	toString: function() {
