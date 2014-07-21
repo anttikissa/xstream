@@ -214,7 +214,31 @@ streams is updated, the resulting stream is updated as well.
 	// later:
 	// -> 6
 
-// TODO is there any sense in this?
+Works with three streams, as well. This example introduces two more ways
+to create a stream, `fromValues` and `fromString`:
+
+TODO is it just an implementation artifact that s1 and s2 are updated in
+the same commit? Debug this!
+
+	var s1 = stream.fromValues(1,2,3,4,5);
+	var s2 = stream.fromString('abcde');
+	var s3 = s2.map(function(s) { return s.toUpperCase(); });
+
+	stream.combine(s1, s2, s3, Array).forEach(log);
+	// later:
+	// -> [ 1, 'a', 'A' ]; [ 2, 'b', 'B' ]; [ 3, 'c', 'C' ]
+
+Combining with `Array` is a common enough operation to warrant its own
+name, `zip`:
+
+	var s1 = stream.fromArray([1,2,3]);
+	var s2 = stream.fromString('abc');
+	stream.zip(s1, s2).forEach(log);
+	// later:
+	// -> [ 1, 'a' ]; [ 2, 'b' ]; [ 3, 'c' ]
+
+TODO is there any sense in this?
+
 Normally, streams only notify their listeners whenever their value
 changes.  But sometimes you don't care about the value, just about the
 notification.  In those cases you can trigger the notification manually:
@@ -247,7 +271,7 @@ used as a clock stream, to make other streams update simultaneously:
 	var randoms = stream.sample(Math.random, clock);
 	var coords = stream.sample(mouseMoveStream, clock);
 
-	stream.combine(randoms, coords, f(randoms, coords) {
+	stream.combine(randoms, coords, function(random, coord) {
 		// do something with them
 	});
 

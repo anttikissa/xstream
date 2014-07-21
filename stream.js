@@ -204,6 +204,11 @@ stream.transaction = function() {
 	return stream.tx || (stream.tx = new Transaction());
 };
 
+// Make a stream from an array.
+// TODO eventually add .pause(), .play(), .rewind(), .interval(),
+// maybe .delay() to these kinds of streams, give them a name
+// 'timed stream', 'buffered stream', 'automatic stream', 'generator stream',
+// or something
 stream.fromArray = function(array) {
 	var result = stream();
 	var update = function() {
@@ -218,9 +223,14 @@ stream.fromArray = function(array) {
 	return result;
 };
 
+stream.fromValues = function() {
+	var args = Array.prototype.slice.call(arguments);
+	return stream.fromArray.call(stream, args);
+};
+
 stream.fromString = function(string) {
 	return stream.fromArray(string.split(''));
-}
+};
 
 // Declares `child` to be dependent on `parent`.
 //
@@ -239,7 +249,7 @@ stream.dependency = function(parent, child, f) {
 
 // Make a stream that depends on a set of other streams.
 //
-// stream(stream1, stream2, ..., function(value1, value2, ...))
+// stream.combine(stream1, stream2, ..., function(value1, value2, ...))
 stream.combine = function() {
 	var result = stream();
 	var parents = Array.prototype.slice.apply(arguments);
@@ -263,6 +273,14 @@ stream.combine = function() {
 		});
 	});
 	return result;
+};
+
+// Call `combine` with 
+// stream.zip(stream1, stream2, ...)
+stream.zip = function() {
+	var args = Array.prototype.slice.apply(arguments);
+	args.push(Array);
+	return stream.combine.apply(null, args);
 };
 
 module.exports = stream;
