@@ -249,9 +249,9 @@ stream.dependency = function(parent, child, f) {
 //			// parent stream's .newValue is updated before dependency
 //			// handlers are called.
 //			var values = parents.map(function(s) {
-//				var value = s.hasOwnProperty('newValue') ? s.newValue : s.value;
+//				return s.hasOwnProperty('newValue') ? s.newValue : s.value;
 //			});
-//			var result = f.apply(values);
+//			var result = f.apply(null, values);
 //			updater(result);
 //		});
 //	});
