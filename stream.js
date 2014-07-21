@@ -144,8 +144,8 @@ Stream.prototype = {
 	// s1: 1 1 2 2 5 6 6
 	// s2: 2 2 3 3 6 7 7
 	map: function(f) {
-		return stream.dependency(this, stream(), function(newValue, setter) {
-			setter(f(newValue));
+		return stream.dependency(this, stream(), function(newValue, updater) {
+			updater(f(newValue));
 		});
 	},
 
@@ -157,9 +157,9 @@ Stream.prototype = {
 	// s1: 1 1 2 2 5 6 6
 	// s2: 1 1     5
 	filter: function(f) {
-		return stream.dependency(this, stream(), function(newValue, setter) {
+		return stream.dependency(this, stream(), function(newValue, updater) {
 			if (f(newValue)) {
-				setter(newValue);
+				updater(newValue);
 			}
 		});
 	},
@@ -172,10 +172,10 @@ Stream.prototype = {
 	// s1: 1 1 2 2 5 6 6 
 	// s2: 1   2   5 6
 	uniq: function() {
-		return stream.dependency(this, stream(), function(newValue, setter) {
+		return stream.dependency(this, stream(), function(newValue, updater) {
 //			console.log('dependency called with', newValue);
 			if (this.value !== newValue) {
-				setter(newValue);
+				updater(newValue);
 			}
 		});
 	},
@@ -223,6 +223,37 @@ stream.dependency = function(parent, child, f) {
 	parent.children.push([child, f]);
 	return child;
 };
+
+// Make a stream that depends on a set of other streams.
+//
+// stream(stream1, stream2, ..., function(value1, value2, ...))
+stream.combine = function() {
+	var result = stream();
+	var parents = Array.prototype.slice.apply(arguments);
+	var f = parents.pop();
+	console.log('args is', parents);
+	console.log('f is', f);
+
+	parents.forEach(function(parent) {
+		stream.dependency(parent, result, function(_, updater) {
+			// Don't use value since we access the .newValue of all
+			// parents directly (if available; otherwise just access
+			// their .values)
+			//
+			// This relies heavily on internals of
+			// Transaction.prototype.commit(): we can assume that the
+			// parent stream's .newValue is updated before dependency
+			// handlers are called.
+			var values = parents.map(function(s) {
+				var value = s.hasOwnProperty('newValue') ? s.newValue : s.value;
+			});
+			var result = f.apply(values);
+			updater(result);
+		});
+	});
+	return result;
+};
+
 
 module.exports = stream;
 

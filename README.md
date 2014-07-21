@@ -199,16 +199,20 @@ Streams can be filtered, like arrays:
 	// -> 1; 3; 5; 7; 9
 
 You can combine streams to make new streams.  Whenever one of the source
-streams changes, the resulting stream changes, too.
+streams is updated, the resulting stream is updated as well.
 
-//	var s1 = stream(1);
-//	var s2 = stream(1);
-//	var s3 = stream.combine(s1, s2, function(value1, value2) {
-//		return value1 * value2;
-//	});
-//	s3.forEach(log);
-//	s1.set(2); // -> 2
-//	s2.set(3); // -> 6
+	var s1 = stream(1);
+	var s2 = stream(1);
+	var s3 = stream.combine(s1, s2, function(value1, value2) {
+		return value1 * value2;
+	});
+	s3.forEach(log);
+	s1.set(2);
+	// later:
+	// -> 2
+	s2.set(3);
+	// later:
+	// -> 6
 
 // TODO is there any sense in this?
 Normally, streams only notify their listeners whenever their value
@@ -231,6 +235,29 @@ a random number on every frame:
 
 	log('random')
 	// -> prints a number 60 times per second
+
+`sample`, by the way, either takes a stream or a function, and takes its
+value at a specified interval.
+
+`sample` can be used to to synchronize streams to another stream that is
+used as a clock stream, to make other streams update simultaneously:
+
+	var clock = stream.clock(1000 / 60);
+	var mouseMoves = stream.fromEvent(document, 'mousemove').pluck(['x', 'y']);
+	var randoms = stream.sample(Math.random, clock);
+	var coords = stream.sample(mouseMoveStream, clock);
+
+	stream.combine(randoms, coords, f(randoms, coords) {
+		// do something with them
+	});
+
+You can use `stream.frame` to return a stream that is synchronized with
+an `requestAnimationFrame` callback:
+
+	var stream.frame();
+	// Do stream.frame.forEach() or something to do some drawing
+	// TODO How to avoid the .setImmediate caused by .forEach()?
+	// .map(...).assign(domElement, 'property')?
 
 You may have noticed that .map() and .forEach() are quite like the array
 functions of the same name.  Streams are like arrays in other respects,
@@ -450,4 +477,4 @@ you can use the shorthand
 
 	var clicks = stream.fromEvent('.close1', 'click');
 
-
+## 
