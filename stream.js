@@ -209,6 +209,10 @@ stream.fromArray = function(array) {
 	return result;
 };
 
+stream.fromString = function(string) {
+	return stream.fromArray(string.split(''));
+}
+
 // Declares `child` to be dependent on `parent`.
 //
 // parent: stream
@@ -227,32 +231,62 @@ stream.dependency = function(parent, child, f) {
 // Make a stream that depends on a set of other streams.
 //
 // stream(stream1, stream2, ..., function(value1, value2, ...))
-stream.combine = function() {
+//stream.combine = function() {
+//	var result = stream();
+//	var parents = Array.prototype.slice.apply(arguments);
+//	var f = parents.pop();
+//	console.log('args is', parents);
+//	console.log('f is', f);
+//
+//	parents.forEach(function(parent) {
+//		stream.dependency(parent, result, function(_, updater) {
+//			// Don't use value since we access the .newValue of all
+//			// parents directly (if available; otherwise just access
+//			// their .values)
+//			//
+//			// This relies heavily on internals of
+//			// Transaction.prototype.commit(): we can assume that the
+//			// parent stream's .newValue is updated before dependency
+//			// handlers are called.
+//			var values = parents.map(function(s) {
+//				var value = s.hasOwnProperty('newValue') ? s.newValue : s.value;
+//			});
+//			var result = f.apply(values);
+//			updater(result);
+//		});
+//	});
+//	return result;
+//};
+stream.combine = function(s1, s2, f) {
 	var result = stream();
-	var parents = Array.prototype.slice.apply(arguments);
-	var f = parents.pop();
-	console.log('args is', parents);
-	console.log('f is', f);
+	var parents = [s1, s2];
+	//Array.prototype.slice.apply(arguments);
+//	var f = parents.pop();
+//	console.log('args is', parents);
+//i	console.log('f is', f);
 
-	parents.forEach(function(parent) {
+//	parents.forEach(function(parent) {
+	stream.dependency(s1, result, function(_, updater) {
+		var values = parents.map(function(s) {
+			console.log('s hasOwnProperty', s.hasOwnProperty('newValue'));
+			return s.hasOwnProperty('newValue') ? s.newValue : s.value;
+		});
+		updater(f.apply(null, values));
+	});
+
+	return result;
+
 		stream.dependency(parent, result, function(_, updater) {
-			// Don't use value since we access the .newValue of all
-			// parents directly (if available; otherwise just access
-			// their .values)
-			//
-			// This relies heavily on internals of
-			// Transaction.prototype.commit(): we can assume that the
-			// parent stream's .newValue is updated before dependency
-			// handlers are called.
 			var values = parents.map(function(s) {
 				var value = s.hasOwnProperty('newValue') ? s.newValue : s.value;
 			});
 			var result = f.apply(values);
 			updater(result);
 		});
-	});
+//	});
 	return result;
 };
+
 
 
 module.exports = stream;
