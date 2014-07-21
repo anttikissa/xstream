@@ -249,13 +249,40 @@ notification.  In those cases you can trigger the notification manually:
 	s.broadcast();
 	// -> ping; pong
 
+The dependency handler functions should only be called after all
+children have been updated. The following example sets up a network of 9
+streams (3 sources and 6 dependent streams) and ensures that each
+dependency handler is called only once.
+
+	var s1 = stream(1);
+	var s2 = stream(2);
+	var s3 = stream(3);
+
+	var plusCount = 0;
+	var plus = function(a, b, c) { plusCount++; return a + b + c; }
+	var mulCount = 0;
+	var mul = function(a, b, c) { mulCount++; return a * b * c; }
+
+	var s4 = stream.combine(s1, s2, s3, plus);
+	var s5 = stream.combine(s1, s2, s3, plus);
+	var s6 = stream.combine(s1, s2, s3, plus);
+
+	var s7 = stream.combine(s4, s5, s6, mul);
+	var s8 = stream.combine(s4, s5, s6, mul);
+	var s9 = stream.combine(s4, s5, s6, mul).forEach(log);
+
+	// later:
+	// (1 + 2 + 3) * (1 + 2 + 3) * (1 + 2 + 3)
+	// -> 216
+	// A naive implementation would call plus 9 times
+	console.log(plusCount); // -> 3
+	// A naive implementation would call mul 27 times
+	console.log(mulCount); // -> 3
+
 Rewire
 
 	// 
 
-Topological sort
-
-	//
 
 When can that be useful? For instance, if you are making a game and want
 a random number on every frame:
