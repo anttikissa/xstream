@@ -258,7 +258,10 @@ stream.fromString = function(string) {
 // like `return stream.dependency(s, stream(), f(v, u) { u(v); });`.
 //
 stream.dependency = function(parent, child, f) {
+	console.log('dependency, setting child');
+	console.log('parent.children before', parent.children);
 	parent.children.push([child, f]);
+	console.log('parent.children after', parent.children);
 	return child;
 };
 
@@ -316,6 +319,34 @@ stream.zip = function() {
 	args.push(Array);
 	return stream.combine.apply(null, args);
 };
+
+
+// Perform a topological sort for a sequence of nodes.
+// Return a sorted list of [node, parents] in order that updates
+// must be performed
+stream.topoSort = function(nodes) {
+	function parent(n1, n2) {
+		for (var i = 0, len = n1.children.length; i < len; i++) {
+			var child = n1.children[i];
+			if (child[0].id === n2.id) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	// check dependencies
+	console.log('parent s1 s2', parent(nodes[2], nodes[0]));
+	console.log('parent s2 s3', parent(nodes[0], nodes[1]));
+	console.log('parent s1 s3', parent(nodes[2], nodes[1]));
+
+	nodes.forEach(function(node) {
+		console.log('sort', node);
+	});
+
+	return nodes;
+}
 
 module.exports = stream;
 

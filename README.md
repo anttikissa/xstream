@@ -279,6 +279,23 @@ dependency handler is called only once.
 	// A naive implementation would call mul 27 times
 	console.log(mulCount); // -> 3
 
+Topological sort TODO move somewhere else
+
+	var s1 = stream();
+	var s2 = stream();
+	var s3 = stream();
+	var identity = function(x) { return x; };
+	stream.dependency(s1, s2, identity);
+	stream.dependency(s2, s3, identity);
+	stream.dependency(s1, s3, identity);
+
+	// s2.set(1); s1.set(1); would result in:
+	var sorted = stream.topoSort([s2, s3, s1]);
+	console.log(sorted[0].id === s2.id); // -> true
+	console.log(sorted[1].id === s1.id); // -> true
+	console.log(sorted[2].id === s3.id); // -> true
+
+
 Rewire
 
 	// 

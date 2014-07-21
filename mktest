@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // vim: set filetype=javascript:
 
-var minTest = 1;
+var minTest = 25;
 var maxTest = 25;
 
 var fs = require('fs');
