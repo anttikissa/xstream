@@ -130,6 +130,8 @@ Stream.prototype = {
 
 	// Set my value to `value`. The value will be updated, and listeners will
 	// be notified, when the next transaction is committed.
+	//
+	// `after` (optional): if specified, delay the update by `after` ms
 	set: function(value, after) {
 		var that = this;
 		
@@ -182,7 +184,6 @@ Stream.prototype = {
 	// s2: 1   2   5 6
 	uniq: function() {
 		return stream.dependency(this, stream(), function(newValue, updater) {
-//			console.log('dependency called with', newValue);
 			if (this.value !== newValue) {
 				updater(newValue);
 			}
@@ -223,25 +224,39 @@ stream.fromArray = function(array) {
 	return result;
 };
 
+// Make a stream from a set of values.
+//
+// Is to `stream.toArray` what `Array.prototype.call` is to
+// `Array.prototype.apply`.
 stream.fromValues = function() {
 	var args = Array.prototype.slice.call(arguments);
 	return stream.fromArray.call(stream, args);
 };
 
+// Make a stream from a string's characters.
+//
+// Internall calls `stream.fromArray`.
 stream.fromString = function(string) {
 	return stream.fromArray(string.split(''));
 };
 
 // Declares `child` to be dependent on `parent`.
+// 
+// This is a 'plumbing' function intended for implementing primitives
+// such as `map`, `filter`, or `reduce`.
 //
 // parent: stream
 // child: stream
 // f: function(newValue, function updater(value))
 //
 // Whenever `parent` changes, `f` gets called with the new value of
-// `parent` and a function that updates `child` when called.
+// `parent` and a function `updater`.
+// `updater`, when called, updates the value of `child` within the 
+// transaction that is currently being committed.
 //
-// Return `child` for convenience.
+// Return `child` for convenience, so you can make nice one-liners
+// like `return stream.dependency(s, stream(), f(v, u) { u(v); });`.
+//
 stream.dependency = function(parent, child, f) {
 	parent.children.push([child, f]);
 	return child;
@@ -250,6 +265,13 @@ stream.dependency = function(parent, child, f) {
 // Make a stream that depends on a set of other streams.
 //
 // stream.combine(stream1, stream2, ..., function(value1, value2, ...))
+//
+// Whenever any of streams `stream1`, `stream2`, ... is updated, the
+// given function is called and the resulting stream is updated within
+// the same transaction.
+//
+// TODO example
+//
 stream.combine = function() {
 	var result = stream();
 	var parents = Array.prototype.slice.apply(arguments);
@@ -275,8 +297,20 @@ stream.combine = function() {
 	return result;
 };
 
-// Call `combine` with 
+// Take n streams and make a stream of arrays from them that is updated
+// whenever one of the source streams is updated.
+//
 // stream.zip(stream1, stream2, ...)
+//
+// Example:
+//
+// var s1 = stream.fromValues(1, 2, 3);
+// var s2 = stream.fromString('abc');
+// stream.zip(s1, s2).forEach(function(x) { console.log(x); });
+// // -> [ 1, 'a' ]; [ 2, 'b' ]; [ 3, 'c' ]
+// 
+// TODO better example?
+//
 stream.zip = function() {
 	var args = Array.prototype.slice.apply(arguments);
 	args.push(Array);
