@@ -16,9 +16,18 @@ function keys(o) {
 // Do `f` soon. Return a function that can be called to cancel the
 // the deferred call.
 function defer(f) {
-	var immediate = setImmediate(f);
+	var canceled = false;
+
+	function run() {
+		if (!canceled) {
+			f();
+		}
+	}
+
+	process.nextTick(run);
+
 	return function() {
-		clearImmediate(immediate);
+		canceled = true;
 	};
 }
 
