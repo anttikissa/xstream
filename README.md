@@ -249,6 +249,14 @@ notification.  In those cases you can trigger the notification manually:
 	s.broadcast();
 	// -> ping; pong
 
+Rewire
+
+	// 
+
+Topological sort
+
+	//
+
 When can that be useful? For instance, if you are making a game and want
 a random number on every frame:
 
