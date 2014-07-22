@@ -282,10 +282,7 @@ stream.fromString = function(string) {
 // like `return stream.dependency(s, stream(), f(v, u) { u(v); });`.
 //
 stream.dependency = function(parent, child, f) {
-	console.log('dependency, setting child');
-	console.log('parent.children before', parent.children);
 	parent.children.push([child, f]);
-	console.log('parent.children after', parent.children);
 	return child;
 };
 

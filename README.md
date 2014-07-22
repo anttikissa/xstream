@@ -358,6 +358,16 @@ notification.  In those cases you can trigger the notification manually:
 	s.broadcast();
 	// -> ping; pong
 
+You can merge two streams:
+
+	var s = stream();
+	var s2 = stream();
+	var both = stream.merge(s, s2).forEach(log);
+
+	s.set(1); s2.set(2).commit();
+	// -> 1; 2; fu
+
+
 The dependency handler functions should only be called after all
 children have been updated. The following example sets up a network of 9
 streams (3 sources and 6 dependent streams) and ensures that each
