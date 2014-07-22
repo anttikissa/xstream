@@ -205,9 +205,38 @@ Stream.prototype = {
 	// s1: 1 1 2 2 5 6 6 
 	// s2: 1   2   5 6
 	uniq: function() {
-		return stream.dependency(this, stream(), function(newValue, updater) {
-			if (this.value !== newValue) {
-				updater(newValue);
+		return stream.dependency(this, stream(), function(value, updater) {
+			if (this.value !== value) {
+				updater(value);
+			}
+		});
+	},
+
+	// Returns a reduced stream, whose value represents the values of
+	// this stream, 'boiled down' by function `f`.  The first value of
+	// the resulting stream is the same as the next value of this
+	// stream.
+	//
+	// f: function(accumulator, value) -> accumulator'
+	//
+	// Like Array.prototype.reduce, but provides a view to the reduction
+	// process in realtime.
+	//
+	// TODO need to would take an initial value that we can return
+	// in case this stream is empty. Should the initial value be
+	// broadcast?
+	//
+	// var s2 = s1.reduce(function(sum, value) { return sum + value; });
+	//
+	// s1: 1 1 2 2  5  6  6
+	// s2: 1 2 4 6 11 17 23
+	//
+	reduce: function(f) {
+		return stream.dependency(this, stream(), function(value, updater) {
+			if (this.value) {
+				updater(f(this.value, value));
+			} else {
+				updater(value);
 			}
 		});
 	},
@@ -237,6 +266,8 @@ stream.transaction = function() {
 
 // Make a stream from an array.
 stream.fromArray = function(array) {
+	// TODO ensure it's an array
+	// at least in debug build
 	var result = stream();
 	var update = function() {
 		if (array.length) {
@@ -269,14 +300,15 @@ stream.fromString = function(string) {
 // Declares `child` to be dependent on `parent`.
 // 
 // This is a 'plumbing' function intended for implementing primitives
-// such as `map`, `filter`, or `reduce`.
+// such as `map`, `filter`, or `reduce`.  
 //
 // parent: stream
 // child: stream
 // f: function(newValue, function updater(value))
 //
 // Whenever `parent` changes, `f` gets called with the new value of
-// `parent` and a function `updater`.
+// `parent` and a function `updater`, with `this` set to `child`.
+//
 // `updater`, when called, updates the value of `child` within the 
 // transaction that is currently being committed.
 //

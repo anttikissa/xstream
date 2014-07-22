@@ -364,11 +364,28 @@ You can merge two streams:
 	var s2 = stream();
 	var both = stream.merge(s, s2).forEach(log);
 
-	s.set(1);
-	s2.set(2);
-	// later:
-	// -> 1; 2
+	s.set(1).commit();
+	// -> 1
+	s2.set(2).commit();
+	// -> 2
 
+	s.set(3);
+	s2.set(4);
+	stream.transaction().commit();
+	// Note that if both streams are updated within the same
+	// transaction, only the later value will be taken into
+	// account in the merged stream:
+	// -> 4
+
+
+And reduce them, like you would an array:
+
+	var s = stream.fromValues(1,2,3,4,5);
+	s.reduce(function(a, b) {
+		return a + b;
+	}).forEach(log);
+	// later:
+	// -> 1; 3; 6; 10; 15
 
 The dependency handler functions should only be called after all
 children have been updated. The following example sets up a network of 9
