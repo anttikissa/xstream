@@ -265,6 +265,9 @@ stream.transaction = function() {
 };
 
 // Make a stream from an array.
+//
+// Set the the first value in the current transaction and the following
+// values in following transactions.
 stream.fromArray = function(array) {
 	// TODO ensure it's an array
 	// at least in debug build
@@ -277,7 +280,7 @@ stream.fromArray = function(array) {
 		}
 	};
 
-	defer(update);
+	update();
 	return result;
 };
 
