@@ -2,7 +2,22 @@
 
 Streams, flows, sources, sinks, nodes, whatever.  Figure out a good name.
 
-What's a stream?
+A few notes to the reader:
+
+*The reader should note that this README experienced explosive growth
+with very little gardening.  Things might be introduced in an illogical
+order, some things may seem irrelevant or unnecessary, and some things
+that should be mentioned might have been omitted. If you find the
+situation like that, could you be so kind as to inform me.*
+
+This README is a living test suite, which explains the fact that the
+examples may feel a bit too verbose and detailed for general
+consumption. (But it's not an excuse - TODO move more detailed tests &
+internal tests to another file.)
+
+## Now, what's a stream?
+
+Basically,
 
 1. A stream has a value
 2. A stream can notify you whenever its value is updated
@@ -44,8 +59,16 @@ current call stack exits:
 		setTimeout(f, 1);
 	}
 
+TODO should you be able to say `.set().commit()` in order to commit the
+perform operation instantly?  Internally it would just call
+stream.transaction().commit().
+
 Internally, streams use `setImmediate` or a similar mechanism to
 schedule the transaction.
+
+TODO make this current. In node, it uses `process.nextTick()`. In the
+browser, it uses a suitable mechanism (if starvation is a problem,
+invent some suitable workaround)
 
 Back to `set`. Like many other methods of `stream`, it returns the
 stream itself:
@@ -187,6 +210,27 @@ You can convert an array into a stream:
 	// later:
 	// -> 1; 2; 3; 4; 5
 
+// TODO eventually add .pause(), .play(), .rewind(), .interval(),
+// maybe .delay() to these kinds of streams, give them a name
+// 'timed stream', 'buffered stream', 'automatic stream', 'generator stream',
+// or something
+
+You should be able to set how long a delay `.fromArray()` (or a
+`.set()`) is.
+
+	stream.fromValues(1,2,3).delay(100);
+	// wait 100 ms, then give 1, 2, 3 in a burst
+
+	stream.fromValues(1).delay(100);
+	// should be equivalent to
+	stream().set(1).delay(100);
+	// but .set() already committed a transaction!
+	// this means that we should have means to remove a stream from
+	// the transaction queue. transaction().remove(stream) ->
+	// would return an array of operations.
+
+This may need some magic (for instance, an internal .rewire())
+
 Streams can be filtered, like arrays:
 
 	var numbers = stream.fromArray([1,2,3,4,5,6,7,8,9,10]);
@@ -285,20 +329,43 @@ Topological sort TODO move somewhere else
 	var s2 = stream();
 	var s3 = stream();
 	var identity = function(x) { return x; };
+	stream.dependency(s1, s3, identity);
 	stream.dependency(s1, s2, identity);
 	stream.dependency(s2, s3, identity);
-	stream.dependency(s1, s3, identity);
 
-	// s2.set(1); s1.set(1); would result in:
-	var sorted = stream.topoSort([s2, s3, s1]);
-	console.log(sorted[0].id === s2.id); // -> true
-	console.log(sorted[1].id === s1.id); // -> true
+	// s1.set(1); would result in:
+	var sorted = stream.updateOrder([s1]);
+	console.log(sorted[0].id === s1.id); // -> true
+	console.log(sorted[1].id === s2.id); // -> true
 	console.log(sorted[2].id === s3.id); // -> true
-
 
 Rewire
 
 	// 
+
+TODO
+
+.merge() is actually flatMap() when generalized to streams
+.concat() similarly could also take a stream of arrays (but if one
+.end()s, the whole stream end()s and it stops listening)
+.reduce()
+.errors(),
+.ends()
+
+.ends() should return the last value of the stream, to enable things
+like:
+
+	stream.fromArray([1,2,3,4]).reduce(function(a, b) {
+		return a + b;
+	}).ends().forEach(function(sum) {
+		console.log('sum is', sum);
+		// -> 10
+	});
+
+
+.er
+
+What other 
 
 
 When can that be useful? For instance, if you are making a game and want
@@ -455,6 +522,48 @@ A transaction is simply a set of modifications that will be performed on nodes:
 	//log(stream.tx); // -> []
 	//log(s.value); // -> 2
 	//log(s2.value); // -> 4
+
+You can also use transactions to modify a stream atomically. Consider
+the classical bank account transfer example:
+
+	var bobAccount = stream(100); // Bob has $100
+	var maryAccount = stream(200); // Mary has $200
+
+	function sendMoney(from, to, amount) {
+		function deposit(balance, amount) {
+			return balance + amount;
+		}
+
+		function withdraw(balance, amount) {
+			if (amount > balance) {
+				throw new InsufficientFundsException('need more');
+			}
+			return balance - value;
+		}
+
+		to.modify(function(balance) {
+			return deposit(balance, amount);
+		});
+	
+		from.modify(function(balance) {
+			return withdraw(balance, amount);
+		});
+
+		// Similar to bluebird's .catch() handlers
+		stream.transaction()
+			.catch(InsufficientFundsException, function(e) {
+				console.log(e.message);
+			}).commit();
+	}
+
+	sendMoney(bobAccount, maryAccount, 101);
+	// -> need more
+	console.log(bobAccount.value, maryAccount.value);
+	// unchanged:
+	// -> 100 200
+	sendMoney(maryAccount, bobAccount, 50);
+	console.log(bobAccount.value, maryAccount.value);
+	// -> 150 150
 
 TODO write about `dependency` instead
 

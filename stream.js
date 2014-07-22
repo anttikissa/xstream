@@ -48,10 +48,15 @@ Transaction.prototype.set = function(stream, value) {
 }
 
 Transaction.prototype.commit = function() {
+
 	if (this.cancel) {
 		this.cancel();
 	}
 
+	// TODO doesn't this mean that the result of calling
+	// .set(), etc., is well-defined even within a commit?
+	// And most importantly, in .forEach() handlers, it's safe to
+	// .set() (and .modify() when it eventually comes)
 	if (stream.tx === this) {
 		delete stream.tx;
 	}
@@ -206,10 +211,6 @@ stream.transaction = function() {
 };
 
 // Make a stream from an array.
-// TODO eventually add .pause(), .play(), .rewind(), .interval(),
-// maybe .delay() to these kinds of streams, give them a name
-// 'timed stream', 'buffered stream', 'automatic stream', 'generator stream',
-// or something
 stream.fromArray = function(array) {
 	var result = stream();
 	var update = function() {
