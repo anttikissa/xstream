@@ -15,9 +15,22 @@ examples may feel a bit too verbose and detailed for general
 consumption. (But it's not an excuse - TODO move more detailed tests &
 internal tests to another file.)
 
-## Now, what's a stream?
+## Background
 
-Basically,
+Draws inspiration from 
+
+- [menrva](https://github.com/phadej/menrva) (auto-committing transactions, taking the idea even further),
+- [Bacon.js](https://github.com/baconjs/bacon.js/) (lots of good ideas, trying to simplify it even more), and 
+- [The introduction to Reactive Programming you've been missing](https://gist.github.com/staltz/868e7e9bc2a7b8c1f754) (the idea of calling these things 'streams')
+
+## Introduction
+
+"It is better to have 100 functions operate on one data structure than
+10 functions on 10 data structures." —Alan Perlis
+
+The data structure of streams is a... stream.
+
+What's a stream?  Basically,
 
 1. A stream has a value
 2. A stream can notify you whenever its value is updated
@@ -362,11 +375,27 @@ like:
 		// -> 10
 	});
 
+Could .ends() return multiple times?
 
-.er
+Would a stream be able to fork() somehow?
 
-What other 
+					   ---> x4' ---> x5' ---> x6' ---> x7' ---> end
+					  /
+	x1 ---> x2 ---> x3 ---> x4 ----> x5 ----> x6 ----> end
+							 \
+							  -----> x5'' --> end
 
+`ends().forEach()` would give you x5'', x6, and x7', and then `ends()`
+itself would end.  But you'd have to define the semantics for what
+`fork()` means.  Maybe this needs the concept of 'producer functions' --
+some streams (for example, stream.sample(Math.random(), 100) generalize
+nicely in this way.
+
+It could be a nice way to explore alternative futures, but it really
+shouldn't complicate the normal implementation in any way.
+
+TODO this was originally about .forEach() returning duplicates, which is
+the way it now works; rewrite this:
 
 When can that be useful? For instance, if you are making a game and want
 a random number on every frame:
@@ -662,4 +691,13 @@ you can use the shorthand
 
 	var clicks = stream.fromEvent('.close1', 'click');
 
-## 
+## Examples
+
+TODO 
+- Snake (like in http://philipnilsson.github.io/badness/)
+  - Especially interesting in terms of how .slidingWindowBy() would be
+    implemented in streams
+- Could implement Tetris as well since I never did that
+- Excel in 100 lines (like http://anttisykari.kapsi.fi/menrva-cells/ but with .rewire() and interface code implemented with streams)
+- ...
+
