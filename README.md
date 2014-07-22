@@ -364,8 +364,10 @@ You can merge two streams:
 	var s2 = stream();
 	var both = stream.merge(s, s2).forEach(log);
 
-	s.set(1); s2.set(2).commit();
-	// -> 1; 2; fu
+	s.set(1);
+	s2.set(2);
+	// later:
+	// -> 1; 2
 
 
 The dependency handler functions should only be called after all

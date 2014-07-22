@@ -10,10 +10,12 @@
 // into a function and call it like 
 // some[thing] = push(some[thing], value);
 //
-// extract Array.prototype.slice.call(arguments); to a function
-// 
 
 // util
+
+function toArray(args) {
+	return Array.prototype.slice.apply(args);
+}
 
 function keys(o) {
 	if (Object.keys) {
@@ -175,8 +177,8 @@ Stream.prototype = {
 	// s1: 1 1 2 2 5 6 6
 	// s2: 2 2 3 3 6 7 7
 	map: function(f) {
-		return stream.dependency(this, stream(), function(newValue, updater) {
-			updater(f(newValue));
+		return stream.dependency(this, stream(), function(value, updater) {
+			updater(f(value));
 		});
 	},
 
@@ -298,7 +300,7 @@ stream.dependency = function(parent, child, f) {
 //
 stream.combine = function() {
 	var result = stream();
-	var parents = Array.prototype.slice.apply(arguments);
+	var parents = toArray(arguments);
 	var f = parents.pop();
 
 	parents.forEach(function(parent) {
@@ -321,6 +323,24 @@ stream.combine = function() {
 	return result;
 };
 
+// Marge n streams.
+stream.merge = function() {
+	var streams = toArray(arguments);
+	// This should be able to make it work like a flatMap
+	//if (arguments.length === 1 && arguments[0] instanceof Stream) {
+	//	streams = arguments[0];
+	//}
+	// it may leak memory though; handle .end(), too
+	var result = stream();
+	streams.forEach(function(s) {
+		stream.dependency(s, result, function(value, updater) {
+			updater(value);
+		});
+	});
+
+	return result;
+}
+
 // Take n streams and make a stream of arrays from them that is updated
 // whenever one of the source streams is updated.
 //
@@ -336,7 +356,7 @@ stream.combine = function() {
 // TODO better example?
 //
 stream.zip = function() {
-	var args = Array.prototype.slice.apply(arguments);
+	var args = toArray(arguments);
 	args.push(Array);
 	return stream.combine.apply(null, args);
 };
