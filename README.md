@@ -113,15 +113,11 @@ current call stack exits:
 		// -> 1
 	});
 
-`later` is defined as:
+As an aside (TODO put this to margin eventually) `later` is defined as:
 
 	function later(f) {
 		setTimeout(f, 1);
 	}
-
-TODO should you be able to say `.set().commit()` in order to commit the
-perform operation instantly?  Internally it would just call
-stream.transaction().commit().
 
 Internally, streams use `setImmediate` or a similar mechanism to
 schedule the transaction.
@@ -130,6 +126,23 @@ TODO make this current. In node, it uses `process.nextTick()`. In the
 browser, it uses a suitable mechanism (if starvation is a problem,
 invent some suitable workaround)
 
+You can call .commit() if you want to set a stream to its value
+immediately. A .commit() will update all streams that have a a `set` pending:
+
+	var s = stream();
+	var s2 = stream();
+
+	s.set(123);
+	s2.set(234);
+	s.commit();
+	console.log(s.value); // -> 123
+	// commit() also commits changes to other streams
+	console.log(s2.value); // -> 234
+
+(`s.commit()` is just a shorthand for `stream.transaction().commit()`.
+It exists just so you can initialize values more easily: 
+`s = stream(x).commit();`)
+
 Back to `set`. Like many other methods of `stream`, it returns the
 stream itself:
 
@@ -137,26 +150,18 @@ stream itself:
 	console.log(s.set(123) === s);
 	// -> true
 	
-So you could have written the previous example as:
+So you can write:
 
-	var s = stream().set(2);
+	var s = stream().set(123).commit();
 	console.log(s.value);
-	// -> undefined
-	later(function() {
-		console.log(s.value);
-		// -> 2
-	});
+	// -> 123
 
 Or simply use the constructor `stream(value)`, which triggers
 `set(value)` (if `value` is defined):
 
-	var s = stream(123);
+	var s = stream(123).commit();
 	console.log(s.value);
-	// -> undefined
-	later(function() {
-		console.log(s.value);
-		// -> 123
-	});
+	// -> 123
 
 You can listen for changes in a stream's value:
 
@@ -179,7 +184,7 @@ same expression:
 	// later:
 	// -> s 1
 
-The order of `.set() and `.forEach()` doesn't matter, because the
+The order of `.set()` and `.forEach()` doesn't matter, because the
 transaction only happens later:
 
 	var s = stream().set(2).forEach(function(value) {
@@ -278,12 +283,12 @@ You can convert an array into a stream:
 You should be able to set how long a delay `.fromArray()` (or a
 `.set()`) is.
 
-	stream.fromValues(1,2,3).delay(100);
+//	stream.fromValues(1,2,3).delay(100);
 	// wait 100 ms, then give 1, 2, 3 in a burst
 
-	stream.fromValues(1).delay(100);
+//	stream.fromValues(1).delay(100);
 	// should be equivalent to
-	stream().set(1).delay(100);
+//	stream().set(1).delay(100);
 	// but .set() already committed a transaction!
 	// this means that we should have means to remove a stream from
 	// the transaction queue. transaction().remove(stream) ->
@@ -557,6 +562,9 @@ reduce, reduceRight?
 
 slice(start, end)
 take(n) is shorthand for slice(0, n)
+leave(n) is shorthand for slice(0, -n) (use sliding window .end())
+skip(n) is shorthand for slice(n)
+step(n) take every n'th value
 
 Other commonly used helpers:
 
@@ -755,4 +763,3 @@ TODO
 - Implementing a useful primitive (like the abovementioned parser)
 - Every method in the API should have a useful real-world example
   (otherwise it doesn't belong to the library)
-

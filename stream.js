@@ -1,3 +1,18 @@
+// TODO to make code shorter, consider:
+//
+// extract pattern
+//   if (some[thing]) {
+//     some[thing].push(value);
+//   } else {
+//     some[thing] = [value];
+//   }
+//
+// into a function and call it like 
+// some[thing] = push(some[thing], value);
+//
+// extract Array.prototype.slice.call(arguments); to a function
+// 
+
 // util
 
 function keys(o) {
@@ -197,6 +212,14 @@ Stream.prototype = {
 
 	toString: function() {
 		return 'stream(' + this.value + ', id: ' + this.id + ')';
+	},
+
+	// A shorthand, to enable:
+	//
+	// var s = stream(1).commit();
+	commit: function() {
+		stream.transaction().commit();
+		return this;
 	}
 };
 
@@ -350,4 +373,3 @@ stream.topoSort = function(nodes) {
 }
 
 module.exports = stream;
-
