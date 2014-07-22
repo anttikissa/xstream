@@ -15,6 +15,53 @@ examples may feel a bit too verbose and detailed for general
 consumption. (But it's not an excuse - TODO move more detailed tests &
 internal tests to another file.)
 
+## Questions a reader might have in mind
+
+TODO answer these eventually
+
+- What's the killer app? (TODO write some cool examples.)
+
+- Why is this library so special? 1) it's easy and simple and small and
+  practical 2) thoroughly documented and reasonably easy to understand,
+  there are no dependencies (You get hipster points for not using
+  jQuery.)
+
+- Is this thing reliable? (Battle-hardened in real projects? No. 100%
+  test coverage? No. Dependency handling? Not yet.)
+
+- Is it fast? (I have 10000 streams and with interdependencies, how
+  fast is commit()? No idea whatsoever.)
+
+- What's the memory footprint (Can I create 100000 streams with
+  callbacks without crashing? How about a million? Hold on. We'll come
+  to that.)
+
+- Are there memory leaks? (Can I create 1000 streams per second in a
+  long-running application and experience to not run out of memory? No
+  idea.)
+
+- Can I read and understand the source code? Is it well commented?
+  (Trying my best.)
+
+- Is it debuggable? (Will stack traces be informative? Nope. Not yet
+  at least. Eventually, might be able to do at least as much as
+  promises. Can I easily see the streams and their states in a
+  debugger? Probably, didn't check though. Do streams have identities?
+  Yes.) TODO write a section "how to debug stream programs"
+
+- Will the API change? (Likely; we're in 0.0.0 right now.)
+
+- Can I do anything I want with it (you can do many things but the API
+  is certainly incomplete. See below.)
+
+- I'd like to do X and Y, how can I implement it easily and submit a
+  patch?
+
+- How does this relate to FRP theory and behaviors and signals and event
+  streams and push/pull? (No idea as of yet, I'll figure that part out
+  later.)
+
+
 ## Background
 
 Draws inspiration from 
@@ -691,6 +738,10 @@ you can use the shorthand
 
 	var clicks = stream.fromEvent('.close1', 'click');
 
+## API reference
+
+Auto-generate
+
 ## Examples
 
 TODO 
@@ -700,4 +751,8 @@ TODO
 - Could implement Tetris as well since I never did that
 - Excel in 100 lines (like http://anttisykari.kapsi.fi/menrva-cells/ but with .rewire() and interface code implemented with streams)
 - ...
+- Simple parsing (filtering out '/* */' and '//' C comments from a stream)
+- Implementing a useful primitive (like the abovementioned parser)
+- Every method in the API should have a useful real-world example
+  (otherwise it doesn't belong to the library)
 
