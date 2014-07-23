@@ -412,23 +412,6 @@ And reduce them, like you would an array:
 	// later:
 	// -> 1; 3; 6; 10; 15
 
-Topological sort TODO move somewhere else
-
-	var s1 = stream();
-	var s2 = stream();
-	var s3 = stream();
-	var identity = function(x) { return x; };
-	stream.dependency(s1, s3, identity);
-	stream.dependency(s1, s2, identity);
-	stream.dependency(s2, s3, identity);
-
-	// s1.set(1); would result in:
-	var sorted = stream.updateOrder([s1]);
-	console.log(sorted[0].id === s1.id); // -> true
-	console.log(sorted[1].id === s2.id); // -> true
-	console.log(sorted[2].id === s3.id); // -> true
-
-
 The dependency handler functions should only be called after all
 children have been updated. The following example sets up a network of 9
 streams (3 sources and 6 dependent streams) and ensures that each
