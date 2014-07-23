@@ -139,10 +139,22 @@ Transaction.prototype.commit = function() {
 
 	var nodesToUpdate = stream.updateOrder(updatedStreamsOrdered);
 	console.log('nodesToUpdate', nodesToUpdate.map(function(s) { return s.id; }));
+	// TODO vocabulary! stream or node! or what!
+	nodesToUpdate.forEach(function(s) {
+		s.f();
+	});
+
+	nodesToUpdate.forEach(function(s) {
+		if (hasNewValue(s)) {
+			s.value = s.newValue;
+			delete s.newValue;
+			s.broadcast();
+		}
+	});
 
 	// AUGH need to pick some dependency function to actually produce
 	// the value of a child! This hurts.
-	var dependencies = [];
+	//var dependencies = [];
 
 	/*
 	for (var i = 0, len = updatedOrdered.length; i < len; i++) {
@@ -359,6 +371,10 @@ Stream.prototype = {
 	commit: function() {
 		stream.transaction().commit();
 		return this;
+	},
+
+	// Update function. For regular streams, this is a no-op.
+	f: function() {
 	}
 };
 
@@ -426,11 +442,11 @@ stream.fromString = function(string) {
 // Return `child` for convenience, so you can make nice one-liners
 // like `return stream.dependency(s, stream(), f(v, u) { u(v); });`.
 //
-stream.dependency = function(parent, child, f) {
-	parent.children.push([child]);
-	child.f = f;
-	return child;
-};
+//stream.dependency = function(parent, child, f) {
+//	parent.children.push([child]);
+//	child.f = f;
+//	return child;
+//};
 
 // Make a stream that depends on a set of other streams.
 //
@@ -502,7 +518,9 @@ stream.updateOrder = function(nodes) {
 	console.log('updateOrder', nodes.map(pluck('id')));
 	// navigate the internal data structure
 	function children(node) {
-		return node.children.map(function(child) { return child[0]; });
+		// TODO inline this!
+		return node.children;
+//		return node.children.map(function(child) { return child[0]; });
 	}
 
 	parentCounts = {};
