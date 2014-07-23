@@ -465,7 +465,10 @@ dependencies from the given stream:
 	// -> 2
 	var newSource = stream(2);
 	s.rewire(newSource);
-	oldSource.set(2);
+	stream.transaction().commit();
+	// -> 2
+	oldSource.set(5).commit();
+	stream.transaction().commit();
 	// no effect
 
 .merge() is actually flatMap() when generalized to streams
