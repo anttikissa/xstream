@@ -164,6 +164,90 @@ function Stream(initial) {
 	}
 };
 
+// Declare dependency `parent` -> `child` with optional update handler.
+// Return `child`.
+//
+// parent: Stream
+// child: Stream
+// f (optional): update handler
+//
+// f gets called whenever on or more child's parents gets updated.
+// It's `this` is set to `child`.
+// .newValue will be set for those parents whose value was updated in
+// this transaction.
+//
+// TODO make into depends(parents..., child, f);
+//
+function depends(parent, child, f) {
+	parent.children.push(child);
+	if (f) {
+		child.f = f;
+	}
+	return child;
+}
+
+function map(s, f) {
+	return depends(s, stream(), function() {
+		this.newValue = f(s.newValue);
+	});
+}
+
+function filter(s, f) {
+	return depends(s, stream(), function() {
+		if (f(s.newValue)) {
+			this.newValue = s.newValue;
+		}
+	});
+}
+
+function uniq(s) {
+	return depends(s, stream(), function() {
+		if (this.value !== s.newValue) {
+			this.newValue = s.newValue;
+		}
+	});
+}
+
+function hasNewValue(s) {
+	return (s.hasOwnProperty('newValue'));
+}
+
+// Return .newValue if exists, otherwise .value
+function mostRecentValue(s) {
+	if (s.hasOwnProperty('newValue'))
+		return s.newValue;
+	return s.value;
+}
+
+// Generalize this later
+function combine(s1, s2, f) {
+	var child = stream(); 
+	depends(s1, child);
+	depends(s2, child);
+	child.f = function() {
+		this.newValue = f(mostRecentValue(s1), mostRecentValue(s2));
+	};
+
+	return child;
+}
+
+// Generalize this later
+function merge(s1, s2) {
+	var child = stream();
+	depends(s1, child);
+	depends(s2, child);
+	child.f = function() {
+		if (hasNewValue(s1)) {
+			this.newValue = s1.newValue;
+		}
+		if (hasNewValue(s2)) {
+			this.newValue = s2.newValue;
+		}
+	};
+
+	return child;
+}
+
 Stream.prototype = {
 
 	// Tell my listeners that my value has been updated.
@@ -210,10 +294,7 @@ Stream.prototype = {
 	// Should we implement it in terms of a more complex and generalized
 	// function or leave it as is?
 	map: function(f) {
-		return stream.dependency(this, stream(), function(value, updater) {
-			console.log('updating', this.id);
-			updater(f(value));
-		});
+		return map(this, f);
 	},
 
 	// Returns a stream whose value is updated with `x` whenever this 
@@ -224,11 +305,7 @@ Stream.prototype = {
 	// s1: 1 1 2 2 5 6 6
 	// s2: 1 1     5
 	filter: function(f) {
-		return stream.dependency(this, stream(), function(newValue, updater) {
-			if (f(newValue)) {
-				updater(newValue);
-			}
-		});
+		return filter(this, f);
 	},
 
 	// Returns a stream whose value is the same as this stream's value,
@@ -239,11 +316,7 @@ Stream.prototype = {
 	// s1: 1 1 2 2 5 6 6 
 	// s2: 1   2   5 6
 	uniq: function() {
-		return stream.dependency(this, stream(), function(value, updater) {
-			if (this.value !== value) {
-				updater(value);
-			}
-		});
+		return uniq(this);
 	},
 
 	// Returns a reduced stream, whose value represents the values of
@@ -266,6 +339,7 @@ Stream.prototype = {
 	// s2: 1 2 4 6 11 17 23
 	//
 	reduce: function(f) {
+		throw new Error('TODO');
 		return stream.dependency(this, stream(), function(value, updater) {
 			if (this.value) {
 				updater(f(this.value, value));
@@ -368,56 +442,10 @@ stream.dependency = function(parent, child, f) {
 //
 // TODO example
 //
-stream.combine = function() {
-	var result = stream();
-	var parents = toArray(arguments);
-	var f = parents.pop();
-
-	parents.forEach(function(parent) {
-		stream.dependency(parent, result, function(_, updater) {
-			// Don't use value since we access the .newValue of all
-			// parents directly (if available; otherwise just access
-			// their .values)
-			//
-			// This relies heavily on internals of
-			// Transaction.prototype.commit(): we can assume that the
-			// parent stream's .newValue is updated before dependency
-			// handlers are called.
-			var values = parents.map(function(s) {
-				return s.hasOwnProperty('newValue') ? s.newValue : s.value;
-			});
-			// TODO should f take a context?
-			console.log('combine updating', result.id);
-			console.log('from parents', parents.map(function(p) { return p.id }));
-			console.log('values', values);
-			updater(f.apply(null, values));
-		});
-	});
-	return result;
-};
+stream.combine = combine;
 
 // Marge n streams.
-stream.merge = function() {
-	var streams = toArray(arguments);
-	// This should be able to make it work like a flatMap
-	//if (arguments.length === 1 && arguments[0] instanceof Stream) {
-	//	streams = arguments[0];
-	//}
-	// Arrgh of course it doesn't work, or is rather inelegant,
-	// since stream.merge(s1, s2, s3) is similar to
-	// stream.merge(s1, s2), but
-	// stream.merge(s1) does something completely different.
-	//
-	// it may leak memory though; handle .end(), too
-	var result = stream();
-	streams.forEach(function(s) {
-		stream.dependency(s, result, function(value, updater) {
-			updater(value);
-		});
-	});
-
-	return result;
-}
+stream.merge = merge;
 
 // merge(stream) and mergeLatest(stream) really belongs into
 // stream.prototype
