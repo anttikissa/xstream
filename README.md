@@ -1,8 +1,6 @@
 
 # TODO
 
-Rename `dependency` -> `depends`. Maybe.
-Topological sort to make updates more efficient
 .rewire()
 merge(stream), mergeLatest(stream)
 Examples (see end)
@@ -442,12 +440,20 @@ dependency handler is called only once.
 	// A naive implementation would call mul 27 times
 	console.log(mulCount); // -> 3
 
-Rewire
+Sometimes it's useful to 'rewire' streams.
 
-	// 
-
-TODO
-
+	var s1 = stream(1);
+	s1.forEach(log);
+	// later:
+	// -> 1
+	s1.rewire(stream.combine(
+		stream(1),
+		stream.fromValues(1, 2, 3), function(a, b) {
+			return a + b;
+		}));
+	// later:
+	// -> 2; 3; 4
+	 
 .merge() is actually flatMap() when generalized to streams
 .concat() similarly could also take a stream of arrays (but if one
 .end()s, the whole stream end()s and it stops listening)

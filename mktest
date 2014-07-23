@@ -2,7 +2,7 @@
 // vim: set filetype=javascript:
 
 var minTest = 1;
-var maxTest = 30;
+var maxTest = 31;
 
 var fs = require('fs');
 

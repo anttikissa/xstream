@@ -131,6 +131,16 @@ function merge() {
 	return depends.apply(null, args);
 }
 
+// rewire: (Stream s, Stream parent) -> Stream
+//
+// Add a dependency from `parent` to `child`
+//
+function rewire(s, parent) {
+	return depends(parent, s, function() {
+		this.newValue = parent.newValue;
+	});
+}
+
 Stream.prototype = {
 
 	// Tell my listeners that my value has been updated.
@@ -224,6 +234,12 @@ Stream.prototype = {
 	//
 	reduce: function(f) {
 		return reduce(this, f);
+	},
+
+	// rewire
+	rewire: function(s) {
+		// TODO remove dependencies from my parents
+		return rewire(this, s);
 	},
 
 	toString: function() {
@@ -488,10 +504,5 @@ Transaction.prototype.commit = function() {
 		}
 	});
 };
-
-
-
-
-
 
 module.exports = stream;
