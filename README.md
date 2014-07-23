@@ -816,4 +816,6 @@ TODO
 - Implementing a useful primitive (like the abovementioned parser)
 - Every method in the API should have a useful real-world example
   (otherwise it doesn't belong to the library)
+- Create a 'make' style build tool
+- Convert mktest into using streams
 
