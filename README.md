@@ -1,3 +1,28 @@
+
+# TODO
+
+Rename `dependency` -> `depends`. Maybe.
+Topological sort to make updates more efficient
+.rewire()
+merge(stream), mergeLatest(stream)
+Examples (see end)
+Figure out if dependencies need to see which parents were changed.  They
+can check .newValue, of course, but it's a bit dirty.
+.end(), .ends()
+.errors()
+.catch()
+.modify(f)
+Figure out how exceptions should work, which errors they should catch
+and what's the difference between stream error and transaction error
+Separate detailed tests out from README
+Should f have `this` set to resulting node in case of map, combine, etc?
+
+.limit(min, max)
+//	[stream 1 2 3 4 5].limit(2, 4) -> [stream 2 3 4]
+//	[stream { x: 1, y: 5 } { x: 2, y: 5 } { x: 3, y: 6 } ]
+//		.limit({ x: 0, y: 6 }, { x: 2, y: 10 }) ->
+//		[stream { x: 2, y: 5 } { x: 3, y: 6 }]
+
 ## streams.js
 
 Streams, flows, sources, sinks, nodes, whatever.  Figure out a good name.
@@ -387,6 +412,23 @@ And reduce them, like you would an array:
 	// later:
 	// -> 1; 3; 6; 10; 15
 
+Topological sort TODO move somewhere else
+
+	var s1 = stream();
+	var s2 = stream();
+	var s3 = stream();
+	var identity = function(x) { return x; };
+	stream.dependency(s1, s3, identity);
+	stream.dependency(s1, s2, identity);
+	stream.dependency(s2, s3, identity);
+
+	// s1.set(1); would result in:
+	var sorted = stream.updateOrder([s1]);
+	console.log(sorted[0].id === s1.id); // -> true
+	console.log(sorted[1].id === s2.id); // -> true
+	console.log(sorted[2].id === s3.id); // -> true
+
+
 The dependency handler functions should only be called after all
 children have been updated. The following example sets up a network of 9
 streams (3 sources and 6 dependent streams) and ensures that each
@@ -416,22 +458,6 @@ dependency handler is called only once.
 	console.log(plusCount); // -> 3
 	// A naive implementation would call mul 27 times
 	console.log(mulCount); // -> 3
-
-Topological sort TODO move somewhere else
-
-	var s1 = stream();
-	var s2 = stream();
-	var s3 = stream();
-	var identity = function(x) { return x; };
-	stream.dependency(s1, s3, identity);
-	stream.dependency(s1, s2, identity);
-	stream.dependency(s2, s3, identity);
-
-	// s1.set(1); would result in:
-	var sorted = stream.updateOrder([s1]);
-	console.log(sorted[0].id === s1.id); // -> true
-	console.log(sorted[1].id === s2.id); // -> true
-	console.log(sorted[2].id === s3.id); // -> true
 
 Rewire
 
@@ -723,7 +749,6 @@ This changes causes changes in `s1` and `s2` to be propagated to
 
 TODO circular dependencies, detecting them
 
-
 ## A crazy idea
 
 That streams would, by default, always broadcast their new value, even
@@ -759,7 +784,6 @@ can include it in the first paragraph of the documentation.
 
 Are things pushed or are they pulled?
 
-
 ## DOM events
 
 Sure enough,
@@ -792,3 +816,4 @@ TODO
 - Implementing a useful primitive (like the abovementioned parser)
 - Every method in the API should have a useful real-world example
   (otherwise it doesn't belong to the library)
+
