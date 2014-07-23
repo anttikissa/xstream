@@ -11,12 +11,16 @@
 // some[thing] = push(some[thing], value);
 //
 
-// util
+//
+// Utility functions
+//
 
+// Convert argument-like object to array
 function toArray(args) {
 	return Array.prototype.slice.apply(args);
 }
 
+// Return array of keys in object
 function keys(o) {
 	if (Object.keys) {
 		return Object.keys(o);
@@ -30,8 +34,27 @@ function keys(o) {
 	return keys;
 }
 
-// Do `f` soon. Return a function that can be called to cancel the
-// the deferred call.
+// Return a function that accesses `member`
+//
+// TODO is this used just for debugging?
+function pluck(member) {
+	return function(o) {
+		return o[member];
+	}
+}
+
+// Find first element in array that satisfies test(element), or undefined
+function find(array, test) {
+	for (var i = 0, len = array.length; i < len; i++) {
+		var item = array[i];
+		if (test(array[i])) {
+			return array[i];
+		}
+	}
+}
+
+// Do `f` at a later time. Return a function that can be called to
+// cancel the the deferred call.
 function defer(f) {
 	var canceled = false;
 
@@ -57,15 +80,10 @@ function Transaction() {
 }
 
 Transaction.prototype.set = function(stream, value) {
-//	console.log('tx set', stream.id, 'to', value);
-//	console.log('tx set: already got ops ', this.ops.map(function(op) {
-//		return "set s" + op[0].id + " to " + op[1];
-//	}));
 	this.ops.push([stream, value]);
 }
 
 Transaction.prototype.commit = function() {
-
 	if (this.cancel) {
 		this.cancel();
 	}
@@ -78,8 +96,8 @@ Transaction.prototype.commit = function() {
 		delete stream.tx;
 	}
 
-	var updated = {};
-	var updatedOrdered = [];
+	var updatedStreams = {};
+	var updatedStreamsOrdered = [];
 
 	for (var i = 0, opsLen = this.ops.length; i < opsLen; i++) {
 //		console.log('this.ops is', this.ops);
@@ -90,11 +108,13 @@ Transaction.prototype.commit = function() {
 		var s = op[0];
 		var value = op[1];
 
-		// TODO update values with topological sort and magic
-		// instead of this, which is a bit simplistic
-
 		s.newValue = op[1];
+		if (!updatedStreams[s.id]) {
+			updatedStreamsOrdered.push(s);
+			updatedStreams[s.id] = true;
+		}
 
+		/*
 		function updateStream(s) {
 			if (!updated[s.id]) {
 				updatedOrdered.push(s);
@@ -114,14 +134,23 @@ Transaction.prototype.commit = function() {
 		}
 
 		updateStream(s);
+		*/
 	}
 
+	var nodesToUpdate = stream.updateOrder(updatedStreamsOrdered);
+	console.log('nodesToUpdate', nodesToUpdate.map(function(s) { return s.id; }));
+
+	// AUGH need to pick some dependency function to actually produce
+	// the value of a child! This hurts.
+	var dependencies = [];
+
+	/*
 	for (var i = 0, len = updatedOrdered.length; i < len; i++) {
 		var updatedStream = updatedOrdered[i];
 		updatedStream.value = updatedStream.newValue;
 		delete updatedStream.newValue;
 		updatedStream.broadcast();
-	}
+	} */
 };
 
 function Stream(initial) {
@@ -176,8 +205,13 @@ Stream.prototype = {
 	//
 	// s1: 1 1 2 2 5 6 6
 	// s2: 2 2 3 3 6 7 7
+	//
+	// TODO map is just stream.combine(this, f).
+	// Should we implement it in terms of a more complex and generalized
+	// function or leave it as is?
 	map: function(f) {
 		return stream.dependency(this, stream(), function(value, updater) {
+			console.log('updating', this.id);
 			updater(f(value));
 		});
 	},
@@ -319,7 +353,8 @@ stream.fromString = function(string) {
 // like `return stream.dependency(s, stream(), f(v, u) { u(v); });`.
 //
 stream.dependency = function(parent, child, f) {
-	parent.children.push([child, f]);
+	parent.children.push([child]);
+	child.f = f;
 	return child;
 };
 
@@ -351,8 +386,11 @@ stream.combine = function() {
 			var values = parents.map(function(s) {
 				return s.hasOwnProperty('newValue') ? s.newValue : s.value;
 			});
-			var result = f.apply(null, values);
-			updater(result);
+			// TODO should f take a context?
+			console.log('combine updating', result.id);
+			console.log('from parents', parents.map(function(p) { return p.id }));
+			console.log('values', values);
+			updater(f.apply(null, values));
 		});
 	});
 	return result;
@@ -365,6 +403,11 @@ stream.merge = function() {
 	//if (arguments.length === 1 && arguments[0] instanceof Stream) {
 	//	streams = arguments[0];
 	//}
+	// Arrgh of course it doesn't work, or is rather inelegant,
+	// since stream.merge(s1, s2, s3) is similar to
+	// stream.merge(s1, s2), but
+	// stream.merge(s1) does something completely different.
+	//
 	// it may leak memory though; handle .end(), too
 	var result = stream();
 	streams.forEach(function(s) {
@@ -375,6 +418,25 @@ stream.merge = function() {
 
 	return result;
 }
+
+// merge(stream) and mergeLatest(stream) really belongs into
+// stream.prototype
+//
+// Merge a stream of streams
+//
+// Return a stream that updates when the latest stream in the stream is
+// updated.
+stream.mergeLatest = function(stream) {
+	// This is roughly how it should work. Right?
+	// Now just go implement .rewire().
+	var result = stream();
+	streams.forEach(function(s) {
+		result.rewire(s);
+	});
+
+	return result;
+}
+
 
 // Take n streams and make a stream of arrays from them that is updated
 // whenever one of the source streams is updated.
@@ -396,32 +458,88 @@ stream.zip = function() {
 	return stream.combine.apply(null, args);
 };
 
-
-// Perform a topological sort for a sequence of nodes.
-// Return a sorted list of [node, parents] in order that updates
-// must be performed
-stream.topoSort = function(nodes) {
-	function parent(n1, n2) {
-		for (var i = 0, len = n1.children.length; i < len; i++) {
-			var child = n1.children[i];
-			if (child[0].id === n2.id) {
-				return true;
-			}
-		}
-
-		return false;
+// Given an array of streams to update, create a graph of those streams
+// and their dependencies and return a topological ordering of that graph 
+// where parents come before their children.
+//
+// nodes: array of Streams
+//
+// The algorithm assumes that `nodes` only contains a single instance of
+// each stream.
+//
+// TODO clarify the order in which the updates happen.
+// Should we start updating from the nodes that come first?
+//
+stream.updateOrder = function(nodes) {
+	console.log('updateOrder', nodes.map(pluck('id')));
+	// navigate the internal data structure
+	function children(node) {
+		return node.children.map(function(child) { return child[0]; });
 	}
 
-	// check dependencies
-	console.log('parent s1 s2', parent(nodes[2], nodes[0]));
-	console.log('parent s2 s3', parent(nodes[0], nodes[1]));
-	console.log('parent s1 s3', parent(nodes[2], nodes[1]));
+	parentCounts = {};
+	allNodes = {};
+	nodesToUpdate = [];
+
+	// Find all nodes reachable from `node`
+	// and record into `parentCounts` the amount of incoming edges
+	// within this graph.
+	// TODO detect cyclical dependencies, eventually
+	function findNodesToUpdate(node) {
+		allNodes[node.id] = node;
+		children(node).forEach(function(child) {
+			parentCounts[child.id] = (parentCounts[child.id] || 0) + 1;
+			findNodesToUpdate(child);
+		});
+	}
 
 	nodes.forEach(function(node) {
-		console.log('sort', node);
+		parentCounts[node.id] = 0;
+		findNodesToUpdate(node);
 	});
 
-	return nodes;
+//	console.log('nodes', parentCounts);
+//	console.log('allNodes', allNodes);
+
+	function removeNode(nodeKey) {
+//		console.log('before removeNode', parentCounts);
+//		console.log('allNodes, looking for', nodeKey);
+//		console.log('allNodes', allNodes);
+		var node = allNodes[nodeKey];
+		var itsChildren = children(node);
+		itsChildren.forEach(function(child) {
+			parentCounts[child.id]--;
+		});
+		delete parentCounts[nodeKey];
+		delete allNodes[nodeKey];
+		nodesToUpdate.push(node);
+//		console.log('after removeNode', parentCounts);
+	}
+
+	// if there are cycles, this one will never terminate
+	while (true) {
+		// remove a node with 0 parents from graph
+		// ideally take the one that should have come first in the
+		// natural ordering
+		// update children's parent counts
+		// push it into nodesToUpdate
+		var nodeKeys = keys(parentCounts);
+		if (nodeKeys.length === 0) {
+			break;
+		}
+//		console.log('finding one', nodeKeys);
+		var nodeKeyWithZeroParents = find(nodeKeys, function(nodeKey) {
+//			console.log('checking if parentCounts[nodeKey] is zero');
+//			console.log('parentCounts', parentCounts);
+//			console.log('nodeKey', nodeKey);
+			return parentCounts[nodeKey] === 0;
+		});
+		removeNode(nodeKeyWithZeroParents);
+
+	}
+
+	return nodesToUpdate;
+
 }
 
 module.exports = stream;
