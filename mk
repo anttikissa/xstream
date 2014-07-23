@@ -7,7 +7,7 @@ cd $(dirname $0)
 
 UGLIFYJS=./node_modules/.bin/uglifyjs
 
-BEFORE=`du -sh dist/*`
+BEFORE=`ls -l dist/*`
 
 mkdir -p dist
 
@@ -26,5 +26,5 @@ echo "$BEFORE"
 echo
 echo "After:"
 
-du -sh dist/*
+ls -l dist/*
 

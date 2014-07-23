@@ -12,187 +12,13 @@
 //
 
 //
-// Utility functions
+// General utility functions
 //
 
 // Convert argument-like object to array
 function toArray(args) {
 	return Array.prototype.slice.apply(args);
 }
-
-// Return array of keys in object
-function keys(o) {
-	if (Object.keys) {
-		return Object.keys(o);
-	}
-	var keys = [];
-	for (var key in o) {
-		if (o.hasOwnProperty(key)) {
-			keys.push(key);
-		}
-	}
-	return keys;
-}
-
-// Return a function that accesses `member`
-//
-// TODO is this used just for debugging?
-function pluck(member) {
-	return function(o) {
-		return o[member];
-	}
-}
-
-// Find first element in array that satisfies test(element), or undefined
-function find(array, test) {
-	for (var i = 0, len = array.length; i < len; i++) {
-		var item = array[i];
-		if (test(array[i])) {
-			return array[i];
-		}
-	}
-}
-
-// Do `f` at a later time. Return a function that can be called to
-// cancel the the deferred call.
-function defer(f) {
-	var canceled = false;
-
-	function run() {
-		if (!canceled) {
-			f();
-		}
-	}
-
-	process.nextTick(run);
-
-	return function() {
-		canceled = true;
-	};
-}
-
-function Transaction() {
-	var that = this;
-	this.cancel = defer(function() {
-		that.commit();
-	});
-	this.ops = [];
-}
-
-Transaction.prototype.set = function(stream, value) {
-	this.ops.push([stream, value]);
-}
-
-// Given an array of streams to update, create a graph of those streams
-// and their dependencies and return a topological ordering of that graph 
-// where parents come before their children.
-//
-// nodes: array of Streams
-//
-// The algorithm assumes that `nodes` only contains a single instance of
-// each stream.
-//
-// TODO clarify the order in which the updates happen.
-// Should we start updating from the nodes that come first?
-//
-function updateOrder(nodes) {
-	parentCounts = {};
-	allNodes = {};
-	nodesToUpdate = [];
-
-	// Find all nodes reachable from `node`
-	// and record into `parentCounts` the amount of incoming edges
-	// within this graph.
-	// TODO detect cyclical dependencies, eventually
-	function findNodesToUpdate(node) {
-		if (allNodes.hasOwnProperty(node.id)) {
-			// We have already calculated the parent counts descending
-			// from this node.
-			return;
-		}
-		allNodes[node.id] = node;
-		node.children.forEach(function(child) {
-			parentCounts[child.id] = (parentCounts[child.id] || 0) + 1;
-			findNodesToUpdate(child);
-		});
-	}
-
-	nodes.forEach(function(node) {
-		parentCounts[node.id] = 0;
-		findNodesToUpdate(node);
-	});
-
-	function removeNode(nodeKey) {
-		var node = allNodes[nodeKey];
-		node.children.forEach(function(child) {
-			parentCounts[child.id]--;
-		});
-		delete parentCounts[nodeKey];
-		delete allNodes[nodeKey];
-		nodesToUpdate.push(node);
-	}
-
-	// if there are cycles, this one will never terminate
-	while (true) {
-		// remove a node with 0 parents from graph
-		// ideally take the one that should have come first in the
-		// natural ordering
-		// update children's parent counts
-		// push it into nodesToUpdate
-		var nodeKeys = keys(parentCounts);
-		if (nodeKeys.length === 0) {
-			break;
-		}
-
-		var nodeKeyWithZeroParents = find(nodeKeys, function(nodeKey) {
-			return parentCounts[nodeKey] === 0;
-		});
-
-		removeNode(nodeKeyWithZeroParents);
-	}
-
-	return nodesToUpdate;
-}
-
-Transaction.prototype.commit = function() {
-	if (this.cancel) {
-		this.cancel();
-	}
-
-	if (stream.tx === this) {
-		delete stream.tx;
-	}
-
-	var updatedStreams = {};
-	var updatedStreamsOrdered = [];
-
-	for (var i = 0, opsLen = this.ops.length; i < opsLen; i++) {
-		var op = this.ops[i];
-		var s = op[0];
-
-		s.newValue = op[1];
-		if (!updatedStreams[s.id]) {
-			updatedStreamsOrdered.push(s);
-			updatedStreams[s.id] = true;
-		}
-	}
-
-	var nodesToUpdate = updateOrder(updatedStreamsOrdered);
-	// TODO vocabulary! stream or node! or what?
-	
-	nodesToUpdate.forEach(function(s) {
-		s.f();
-	});
-
-	// I wonder if these could be done in the same .forEach()
-	nodesToUpdate.forEach(function(s) {
-		if (hasNewValue(s)) {
-			s.value = s.newValue;
-			delete s.newValue;
-			s.broadcast();
-		}
-	});
-};
 
 function Stream(initial) {
 	this.listeners = []; // 'external' listeners
@@ -227,6 +53,11 @@ function depends() {
 	child.f = f;
 	return child;
 }
+
+//
+// 'Bare' functions that are later installed into `stream` and
+// `stream.prototype`
+//
 
 function map(s, f) {
 	return depends(s, stream(), function() {
@@ -483,6 +314,184 @@ stream.zip = function() {
 	args.push(Array);
 	return stream.combine.apply(null, args);
 };
+
+//
+// Utilities used by Transaction
+//
+
+// Return array of keys in object
+function keys(o) {
+	if (Object.keys) {
+		return Object.keys(o);
+	}
+	var keys = [];
+	for (var key in o) {
+		if (o.hasOwnProperty(key)) {
+			keys.push(key);
+		}
+	}
+	return keys;
+}
+
+// Find first element in array that satisfies test(element), or undefined
+function find(array, test) {
+	for (var i = 0, len = array.length; i < len; i++) {
+		var item = array[i];
+		if (test(array[i])) {
+			return array[i];
+		}
+	}
+}
+
+// Do `f` at a later time. Return a function that can be called to
+// cancel the the deferred call.
+function defer(f) {
+	var canceled = false;
+
+	function run() {
+		if (!canceled) {
+			f();
+		}
+	}
+
+	process.nextTick(run);
+
+	return function() {
+		canceled = true;
+	};
+}
+
+//
+// Transaction
+//
+// TODO documentation
+//
+function Transaction() {
+	var that = this;
+	this.cancel = defer(function() {
+		that.commit();
+	});
+	this.ops = [];
+}
+
+Transaction.prototype.set = function(stream, value) {
+	this.ops.push([stream, value]);
+}
+
+// Given an array of streams to update, create a graph of those streams
+// and their dependencies and return a topological ordering of that graph 
+// where parents come before their children.
+//
+// nodes: array of Streams
+//
+// The algorithm assumes that `nodes` only contains a single instance of
+// each stream.
+//
+// TODO clarify the order in which the updates happen.
+// Should we start updating from the nodes that come first?
+//
+function updateOrder(nodes) {
+	parentCounts = {};
+	allNodes = {};
+	nodesToUpdate = [];
+
+	// Find all nodes reachable from `node`
+	// and record into `parentCounts` the amount of incoming edges
+	// within this graph.
+	// TODO detect cyclical dependencies, eventually
+	function findNodesToUpdate(node) {
+		if (allNodes.hasOwnProperty(node.id)) {
+			// We have already calculated the parent counts descending
+			// from this node.
+			return;
+		}
+		allNodes[node.id] = node;
+		node.children.forEach(function(child) {
+			parentCounts[child.id] = (parentCounts[child.id] || 0) + 1;
+			findNodesToUpdate(child);
+		});
+	}
+
+	nodes.forEach(function(node) {
+		parentCounts[node.id] = 0;
+		findNodesToUpdate(node);
+	});
+
+	function removeNode(nodeKey) {
+		var node = allNodes[nodeKey];
+		node.children.forEach(function(child) {
+			parentCounts[child.id]--;
+		});
+		delete parentCounts[nodeKey];
+		delete allNodes[nodeKey];
+		nodesToUpdate.push(node);
+	}
+
+	// if there are cycles, this one will never terminate
+	while (true) {
+		// remove a node with 0 parents from graph
+		// ideally take the one that should have come first in the
+		// natural ordering
+		// update children's parent counts
+		// push it into nodesToUpdate
+		var nodeKeys = keys(parentCounts);
+		if (nodeKeys.length === 0) {
+			break;
+		}
+
+		var nodeKeyWithZeroParents = find(nodeKeys, function(nodeKey) {
+			return parentCounts[nodeKey] === 0;
+		});
+
+		removeNode(nodeKeyWithZeroParents);
+	}
+
+	return nodesToUpdate;
+}
+
+Transaction.prototype.commit = function() {
+	if (this.cancel) {
+		this.cancel();
+	}
+
+	if (stream.tx === this) {
+		delete stream.tx;
+	}
+
+	var updatedStreams = {};
+	var updatedStreamsOrdered = [];
+
+	for (var i = 0, opsLen = this.ops.length; i < opsLen; i++) {
+		var op = this.ops[i];
+		var s = op[0];
+
+		s.newValue = op[1];
+		if (!updatedStreams[s.id]) {
+			updatedStreamsOrdered.push(s);
+			updatedStreams[s.id] = true;
+		}
+	}
+
+	var nodesToUpdate = updateOrder(updatedStreamsOrdered);
+	// TODO vocabulary! stream or node! or what?
+	
+	nodesToUpdate.forEach(function(s) {
+		s.f();
+	});
+
+	// I wonder if these could be done in the same .forEach()
+	nodesToUpdate.forEach(function(s) {
+		if (hasNewValue(s)) {
+			s.value = s.newValue;
+			delete s.newValue;
+			s.broadcast();
+		}
+	});
+};
+
+
+
+
 
 
 module.exports = stream;
