@@ -22,6 +22,7 @@ function toArray(args) {
 
 function Stream(initial) {
 	this.listeners = []; // 'external' listeners
+	this.parents = []; // my dependencies
 	this.children = []; // 'internal' listeners
 	this.value = undefined;
 	this.id = stream.nextId++;
@@ -30,6 +31,10 @@ function Stream(initial) {
 		this.set(initial);
 	}
 };
+
+// TODO consider making `depends` a member of `stream`.
+//
+// In fact, it's a bit similar to `rewire`. Can they be merged?
 
 // depends: (Stream parents..., Stream child, f) -> Stream
 //
@@ -41,14 +46,20 @@ function Stream(initial) {
 // if it wants to update the child.
 //
 function depends() {
+	// Parents are only needed for .rewire(), at least right now.
+	// But they could be used to avoid allocating new memory on `map`,
+	// etc. Every stream could have the same `updater`, which would
+	// take `f` from `this.f` and `parents` from `this.parents`
 	var arglen = arguments.length;
 	// `child` is the second last argument
 	var child = arguments[arglen - 2];
 	// `f` is the last argument
 	var f = arguments[arglen - 1];
+
 	// `parents` are all except the last two arguments
 	for (var i = 0; i < arglen - 2; i++) {
 		arguments[i].children.push(child);
+		child.parents.push(arguments[i]);
 	}
 	child.f = f;
 	return child;
@@ -129,6 +140,20 @@ function merge() {
 	}]);
 
 	return depends.apply(null, args);
+}
+
+// rewire: (Stream s, Stream parent) -> Stream
+//
+// Add a dependency from `parent` to `child`
+//
+function rewire(s, parent) {
+	s.parents.forEach(function(parent) {
+		parent.children.splice(parent.children.indexOf(s));
+	});
+	s.parents = [];
+	return depends(parent, s, function() {
+		this.newValue = parent.newValue;
+	});
 }
 
 Stream.prototype = {
@@ -224,6 +249,12 @@ Stream.prototype = {
 	//
 	reduce: function(f) {
 		return reduce(this, f);
+	},
+
+	// rewire
+	rewire: function(s) {
+		// TODO remove dependencies from my parents
+		return rewire(this, s);
 	},
 
 	toString: function() {
@@ -488,10 +519,5 @@ Transaction.prototype.commit = function() {
 		}
 	});
 };
-
-
-
-
-
 
 module.exports = stream;
