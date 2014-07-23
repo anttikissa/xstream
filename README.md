@@ -440,20 +440,34 @@ dependency handler is called only once.
 	// A naive implementation would call mul 27 times
 	console.log(mulCount); // -> 3
 
-Sometimes it's useful to 'rewire' streams.
+Sometimes it's useful to 'rewire' streams. `s.rewire(newSource)` makes
+`s` follow the value of `newSource`, without breaking any streams or
+listeners that depend on `s` itself.
 
 	var s1 = stream(1);
-	s1.forEach(log);
+	s1.map(function(x) { return x + 1; }).forEach(log);
 	// later:
-	// -> 1
+	// -> 2
 	s1.rewire(stream.combine(
-		stream(1),
+		stream(5),
 		stream.fromValues(1, 2, 3), function(a, b) {
-			return a + b;
+			return a * b;
 		}));
 	// later:
-	// -> 2; 3; 4
-	 
+	// -> 6; 11; 16
+	
+`rewire` discards the stream's old dependencies and copies its
+dependencies from the given stream:
+
+	var oldSource = stream(1);
+	var s = oldSource.map(function(x) { return x + 1; }).forEach(log);
+	// later:
+	// -> 2
+	var newSource = stream(2);
+	s.rewire(newSource);
+	oldSource.set(2);
+	// no effect
+
 .merge() is actually flatMap() when generalized to streams
 .concat() similarly could also take a stream of arrays (but if one
 .end()s, the whole stream end()s and it stops listening)
