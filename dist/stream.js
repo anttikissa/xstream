@@ -315,6 +315,8 @@ stream.fromArray = function(array) {
 			result.set(array.shift());
 
 			defer(update);
+		} else {
+			result.end();
 		}
 	};
 

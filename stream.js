@@ -394,7 +394,7 @@ function find(array, test) {
 
 // Do `f` at a later time. Return a function that can be called to
 // cancel the the deferred call.
-function defer(f) {
+function deferNextTick(f) {
 	var canceled = false;
 
 	function run() {
@@ -409,6 +409,15 @@ function defer(f) {
 		canceled = true;
 	};
 }
+
+function deferTimeout(f) {
+	var timeout = setTimeout(f);
+	return function() {
+		clearTimeout(timeout);
+	};
+}
+
+var defer = typeof process !== 'undefined' && process.nextTick ? deferNextTick : deferTimeout;
 
 //
 // Transaction
