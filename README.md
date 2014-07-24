@@ -471,6 +471,18 @@ dependencies from the given stream:
 	stream.transaction().commit();
 	// no effect
 
+Streams can end, which means that they no longer want to broadcast
+values. You can listen to end events by using the stream `s.ends()`,
+which is a stream that gets updated with the last value of the stream
+immediately when it ends:
+
+	var s = stream.fromValues(1,2,3).forEach(log);
+	s.ends().forEach(function(lastValue) {
+		console.log('stream ended, last value was', lastValue);
+	});
+	// later:
+	// -> 1; 2; 3; stream ended, last value was 3
+
 .merge() is actually flatMap() when generalized to streams
 .concat() similarly could also take a stream of arrays (but if one
 .end()s, the whole stream end()s and it stops listening)
@@ -824,4 +836,12 @@ TODO
   (otherwise it doesn't belong to the library)
 - Create a 'make' style build tool
 - Convert mktest into using streams
+- Classic autocomplete example
+
+- http://elm-lang.org/ has the time traveling thing
+- form with username & two password fields
+  - check that passwords match
+  - that username/email is not taken
+  - etc.
+  - maybe validate email too
 

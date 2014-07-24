@@ -271,6 +271,22 @@ Stream.prototype = {
 
 	// Update function. For regular streams, this is a no-op.
 	f: function() {
+	},
+
+	ends: function() {
+		if (!this.endStream) {
+			this.endStream = stream();
+		}
+		return this.endStream;
+	},
+
+	end: function() {
+		// TODO cut ties to parents
+		// TODO how about children?
+		if (this.endStream) {
+			// TODO within a transaction?
+			this.endStream.set(this.value);
+		}
 	}
 };
 
@@ -297,6 +313,8 @@ stream.fromArray = function(array) {
 			result.set(array.shift());
 
 			defer(update);
+		} else {
+			result.end();
 		}
 	};
 
