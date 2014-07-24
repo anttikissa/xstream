@@ -1,3 +1,5 @@
+var module = {};
+(function(module) {
 // TODO to make code shorter, consider:
 //
 // extract pattern
@@ -271,6 +273,22 @@ Stream.prototype = {
 
 	// Update function. For regular streams, this is a no-op.
 	f: function() {
+	},
+
+	ends: function() {
+		if (!this.endStream) {
+			this.endStream = stream();
+		}
+		return this.endStream;
+	},
+
+	end: function() {
+		// TODO cut ties to parents
+		// TODO how about children?
+		if (this.endStream) {
+			// TODO within a transaction?
+			this.endStream.set(this.value);
+		}
 	}
 };
 
@@ -376,7 +394,7 @@ function find(array, test) {
 
 // Do `f` at a later time. Return a function that can be called to
 // cancel the the deferred call.
-function defer(f) {
+function deferNextTick(f) {
 	var canceled = false;
 
 	function run() {
@@ -391,6 +409,15 @@ function defer(f) {
 		canceled = true;
 	};
 }
+
+function deferTimeout(f) {
+	var timeout = setTimeout(f);
+	return function() {
+		clearTimeout(timeout);
+	};
+}
+
+var defer = typeof process !== 'undefined' && process.nextTick ? deferNextTick : deferTimeout;
 
 //
 // Transaction
@@ -521,3 +548,4 @@ Transaction.prototype.commit = function() {
 };
 
 module.exports = stream;
+})(module); var stream = module.exports;
