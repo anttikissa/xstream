@@ -1,19 +1,19 @@
 
 # TODO
 
-.rewire()
-merge(stream), mergeLatest(stream)
-Examples (see end)
-Figure out if dependencies need to see which parents were changed.  They
-can check .newValue, of course, but it's a bit dirty.
-.end(), .ends()
-.errors()
-.catch()
-.modify(f)
-Figure out how exceptions should work, which errors they should catch
-and what's the difference between stream error and transaction error
-Separate detailed tests out from README
-Should f have `this` set to resulting node in case of map, combine, etc?
+- merge(stream), mergeLatest(stream)
+- onEnd() to work correctly for other combinators, too (map works)
+- Examples (see end)
+- Figure out if dependencies need to see which parents were changed.  They
+- can check .newValue, of course, but it's a bit dirty.
+- .end(), .ends()
+- .errors()
+- .catch()
+- .modify(f)
+- Figure out how exceptions should work, which errors they should catch
+  and what's the difference between stream error and transaction error
+- Separate detailed tests out from README
+- Should f have `this` set to resulting node in case of map, combine, etc?
 
 .limit(min, max)
 //	[stream 1 2 3 4 5].limit(2, 4) -> [stream 2 3 4]
