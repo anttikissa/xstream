@@ -1,15 +1,35 @@
 
 # TODO
 
-- merge(stream), mergeLatest(stream)
+- onEnd() to work correctly (??? figure out the right semantics) for reduce() with an initial value and no derived values
+- reduce() could set .value to initialValue and just not broadcast it,
+  now would that be silly?
+- do some renames: set -> update, talk about children and parents
+  instead of 'dependencies' (maybe?), talk about linking and unlinking
+  instead of depends()/rewire (maybe? rewire could do just unlink from
+  current parents + link to new ones)
+- make `depends` actually use the same function that does that actual
+  updating, which is the same global function for `map`, `reduce`, etc
+  (maybe optimized / readabilized for map, combine2, combine3, merge2,
+  merge3, etc)
+- every stream to have .parents[] where it takes its parent values from
+- every stream to have .updater which is called when it needs to get
+  them
+- every stream to have .f that is the actual combinator given to .map(),
+  .reduce(), .combine() etc.
+- should prevent .set() from being called when the stream has parents
+  (this messes with the topological sort, sets parensCount[id] to -1,
+  should've seen that coming)
+- mergeStream(stream), mergeStreamLatest(stream)
+  (or just call them flatMap(/Latest)?)
 - onEnd() to work correctly for other combinators, too (map works)
 - Examples (see end)
 - Figure out if dependencies need to see which parents were changed.  They
-- can check .newValue, of course, but it's a bit dirty.
+  can check .newValue, of course, but it's a bit dirty. (Implement
+  .sampledBy and the answer will be revealed.)
 - .end(), .ends()
-- .errors()
-- .catch()
-- .modify(f)
+- .modify(f) (maybe?)
+- .errors() and .catch() (OR: do we need error handling at all?)
 - Figure out how exceptions should work, which errors they should catch
   and what's the difference between stream error and transaction error
 - Separate detailed tests out from README
