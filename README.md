@@ -400,7 +400,6 @@ You can merge two streams:
 	// account in the merged stream:
 	// -> 4
 
-
 And reduce them, like you would an array:
 
 	var s = stream.fromValues(1,2,3,4,5);
@@ -409,6 +408,19 @@ And reduce them, like you would an array:
 	}).forEach(log);
 	// later:
 	// -> 1; 3; 6; 10; 15
+
+A common case of using `reduce` is collecting all values into an array.
+`reduce` gets an optional initial value.  Note that `reduce` only
+produces values whenever the original stream is updated, and therefore
+
+	var s = stream.fromValues(1,2,3);
+	var all = s.reduce(function(array, value) {
+		return array.concat([value]);
+	}, []);
+	all.forEach(log);
+	//	s.collect().forEach(log);
+	// later:
+	// -> [ 1 ]; [ 1, 2 ]; [ 1, 2, 3 ]
 
 The dependency handler functions should only be called after all
 children have been updated. The following example sets up a network of 9
@@ -478,10 +490,23 @@ immediately when it ends:
 
 	var s = stream.fromValues(1,2,3).forEach(log);
 	s.ends().forEach(function(lastValue) {
-		console.log('stream ended, last value was', lastValue);
+		console.log('ended with', lastValue);
 	});
 	// later:
-	// -> 1; 2; 3; stream ended, last value was 3
+	// -> 1; 2; 3; ended with 3
+
+Mapped streams end when the parent stream ends:
+
+	var id = function(x) { return x; };
+	var s = stream();
+	var s2 = s.map(id).forEach(log);
+	s.ends().forEach(function() { console.log('s ends'); });
+	s2.ends().forEach(function() { console.log('s2 ends'); });
+	s.set(123);
+	s.end();
+	// later:
+	// -> 123
+
 
 .merge() is actually flatMap() when generalized to streams
 .concat() similarly could also take a stream of arrays (but if one

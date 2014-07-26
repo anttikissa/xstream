@@ -2,9 +2,9 @@
 //
 // extract pattern
 //   if (some[thing]) {
-//     some[thing].push(value);
+//	 some[thing].push(value);
 //   } else {
-//     some[thing] = [value];
+//	 some[thing] = [value];
 //   }
 //
 // into a function and call it like 
@@ -15,9 +15,22 @@
 // General utility functions
 //
 
+// Identical to console.log but shorter to write
+//var log = console.log.bind(console);
+var log = function() {};
+
 // Convert argument-like object to array
 function toArray(args) {
 	return Array.prototype.slice.apply(args);
+}
+
+// ".key" -> function that returns .key
+function access(selector) {
+	if (selector[0] !== '.') {
+		throw new Error('invalid', selector);
+	}
+	var key = selector.slice(1);
+	return function(o) { return o[key]; };
 }
 
 function Stream(initial) {
@@ -32,270 +45,213 @@ function Stream(initial) {
 	}
 };
 
-// TODO consider making `depends` a member of `stream`.
-//
-// In fact, it's a bit similar to `rewire`. Can they be merged?
-
-// depends: (Stream parents..., Stream child, f) -> Stream
-//
-// Declare value of `child` to depend on each of `parents`.
-//
-// Whenever one or more parents is updated, `f` gets called with child
-// assigned to `this`.  Parents' `.newValue` is set if the parent has
-// been updated during this transaction. `f` should set `this.newValue`
-// if it wants to update the child.
-//
-function depends() {
-	// Parents are only needed for .rewire(), at least right now.
-	// But they could be used to avoid allocating new memory on `map`,
-	// etc. Every stream could have the same `updater`, which would
-	// take `f` from `this.f` and `parents` from `this.parents`
-	var arglen = arguments.length;
-	// `child` is the second last argument
-	var child = arguments[arglen - 2];
-	// `f` is the last argument
-	var f = arguments[arglen - 1];
-
-	// `parents` are all except the last two arguments
-	for (var i = 0; i < arglen - 2; i++) {
-		arguments[i].children.push(child);
-		child.parents.push(arguments[i]);
-	}
-	child.f = f;
-	return child;
-}
-
-//
-// 'Bare' functions that are later installed into `stream` and
-// `stream.prototype`
-//
-
-function map(s, f) {
-	return depends(s, stream(), function() {
-		this.newValue = f(s.newValue);
-	});
-}
-
-function filter(s, f) {
-	return depends(s, stream(), function() {
-		if (f(s.newValue)) {
-			this.newValue = s.newValue;
-		}
-	});
-}
-
-function uniq(s) {
-	return depends(s, stream(), function() {
-		if (this.value !== s.newValue) {
-			this.newValue = s.newValue;
-		}
-	});
-}
-
-function reduce(s, f) {
-	return depends(s, stream(), function() {
-		if (this.value != null) {
-			this.newValue = f(this.value, s.newValue);
-		} else {
-			this.newValue = s.newValue;
-		}
-	});
-}
-
-function hasNewValue(s) {
-	return s.hasOwnProperty('newValue');
-}
-
-// Return .newValue if exists, otherwise .value
-function mostRecentValue(s) {
-	if (s.hasOwnProperty('newValue'))
-		return s.newValue;
-	return s.value;
-}
-
-// combine: (Stream streams..., f) -> Stream
-function combine() {
-	var parents = toArray(arguments);
-	var f = parents.pop();
-
-	var args = parents.concat([stream(), function() {
-		this.newValue = f.apply(null, parents.map(mostRecentValue));
-	}]);
-
-	return depends.apply(null, args);
-}
-
-// merge: (Stream streams...) -> Stream
-function merge() {
-	var parents = toArray(arguments);
-
-	var args = parents.concat([stream(), function() {
-		var child = this;
-		
-		for (var i = 0, len = parents.length; i < len; i++) {
-			if (hasNewValue(parents[i])) {
-				child.newValue = parents[i].newValue;
-			}
-		}
-	}]);
-
-	return depends.apply(null, args);
-}
-
-// rewire: (Stream s, Stream parent) -> Stream
-//
-// Add a dependency from `parent` to `child`
-//
-function rewire(s, parent) {
-	s.parents.forEach(function(parent) {
-		parent.children.splice(parent.children.indexOf(s));
-	});
-	s.parents = [];
-	return depends(parent, s, function() {
-		this.newValue = parent.newValue;
-	});
-}
-
-Stream.prototype = {
-
-	// Tell my listeners that my value has been updated.
-	broadcast: function() {
-		for (var i = 0, len = this.listeners.length; i < len; i++) {
-			this.listeners[i](this.value);
-		}
-	},
-
-	// Call f whenever my value has been updated.
-	forEach: function(f) {
-		this.listeners.push(f);
-		return this;
-	},
-
-	// Set my value to `value`. The value will be updated, and listeners will
-	// be notified, when the next transaction is committed.
-	//
-	// `after` (optional): if specified, delay the update by `after` ms
-	set: function(value, after) {
-		var that = this;
-		
-		if (after) {
-			setTimeout(function() {
-				var tx = stream.transaction();
-				tx.set(that, value);
-			}, after);
-			return this;
-		}
-		var tx = stream.transaction();
-		tx.set(that, value);
-		return this;
-	},
-
-	// Returns a stream whose value is updated with `f(x)` whenever this
-	// stream's value is updated with `x`.
-	//
-	// var s2 = s1.map(plusOne);
-	//
-	// s1: 1 1 2 2 5 6 6
-	// s2: 2 2 3 3 6 7 7
-	//
-	// TODO map is just stream.combine(this, f).
-	//
-	// Should we implement it in terms of a more complex and generalized
-	// function or leave it as is?
-	map: function(f) {
-		return map(this, f);
-	},
-
-	// Returns a stream whose value is updated with `x` whenever this 
-	// stream's value is updated with `x`, if `f(x)` is true.
-	//
-	// var s2 = s1.filter(isOdd);
-	//
-	// s1: 1 1 2 2 5 6 6
-	// s2: 1 1     5
-	filter: function(f) {
-		return filter(this, f);
-	},
-
-	// Returns a stream whose value is the same as this stream's value,
-	// but is only broadcast whenever this stream's value changes.
-	//
-	// var s2 = s1.uniq()
-	//
-	// s1: 1 1 2 2 5 6 6 
-	// s2: 1   2   5 6
-	uniq: function() {
-		return uniq(this);
-	},
-
-	// Returns a reduced stream, whose value represents the values of
-	// this stream, 'boiled down' by function `f`.  The first value of
-	// the resulting stream is the same as the next value of this
-	// stream.
-	//
-	// f: function(accumulator, value) -> accumulator'
-	//
-	// Like Array.prototype.reduce, but provides a view to the reduction
-	// process in realtime.
-	//
-	// TODO need to would take an initial value that we can return
-	// in case this stream is empty. Should the initial value be
-	// broadcast?
-	//
-	// var s2 = s1.reduce(function(sum, value) { return sum + value; });
-	//
-	// s1: 1 1 2 2  5  6  6
-	// s2: 1 2 4 6 11 17 23
-	//
-	reduce: function(f) {
-		return reduce(this, f);
-	},
-
-	// rewire
-	rewire: function(s) {
-		// TODO remove dependencies from my parents
-		return rewire(this, s);
-	},
-
-	toString: function() {
-		return 'stream(' + this.value + ', id: ' + this.id + ')';
-	},
-
-	// A shorthand, to enable:
-	//
-	// var s = stream(1).commit();
-	commit: function() {
-		stream.transaction().commit();
-		return this;
-	},
-
-	// Update function. For regular streams, this is a no-op.
-	f: function() {
-	},
-
-	ends: function() {
-		if (!this.endStream) {
-			this.endStream = stream();
-		}
-		return this.endStream;
-	},
-
-	end: function() {
-		// TODO cut ties to parents
-		// TODO how about children?
-		if (this.endStream) {
-			// TODO within a transaction?
-			this.endStream.set(this.value);
-		}
+// Tell my listeners that my value has been updated.
+Stream.prototype.broadcast = function broadcast() {
+	for (var i = 0, len = this.listeners.length; i < len; i++) {
+		this.listeners[i](this.value);
 	}
 };
 
-var stream = function(initial) {
+// Call f whenever my value has been updated.
+Stream.prototype.forEach = function forEach(f) {
+	this.listeners.push(f);
+	return this;
+};
+
+// Set my value to `value`. The value will be updated, and listeners will
+// be notified, when the next transaction is committed.
+Stream.prototype.set = function set(value) {
+	var that = this;
+
+	var tx = stream.transaction();
+	tx.set(that, value);
+	return this;
+};
+
+// Returns a stream whose value is updated with `f(x)` whenever this
+// stream's value is updated with `x`.
+//
+// var s2 = s1.map(plusOne);
+//
+// s1: 1 1 2 2 5 6 6
+// s2: 2 2 3 3 6 7 7
+//
+// TODO map is just stream.combine(this, f).
+// Should we implement it in terms of a more complex and generalized
+// function or leave it as is?
+Stream.prototype.map = function map(f) {
+	var parent = this;
+	return depends(parent, stream(), function() {
+		this.newValue = f(parent.newValue);
+	}).endWhen(this);
+};
+
+// Returns a stream whose value is updated with `x` whenever this 
+// stream's value is updated with `x`, if `f(x)` is true.
+//
+// var s2 = s1.filter(isOdd);
+//
+// s1: 1 1 2 2 5 6 6
+// s2: 1 1	 5
+Stream.prototype.filter = function filter(f) {
+	var parent = this;
+	return depends(this, stream(), function() {
+		if (f(parent.newValue)) {
+			this.newValue = parent.newValue;
+		}
+	});
+};
+
+// Returns a stream whose value is the same as this stream's value,
+// but is only broadcast whenever this stream's value changes.
+//
+// var s2 = s1.uniq()
+//
+// s1: 1 1 2 2 5 6 6 
+// s2: 1   2   5 6
+Stream.prototype.uniq = function uniq() {
+	var parent = this;
+	return depends(this, stream(), function() {
+		if (this.value !== parent.newValue) {
+			this.newValue = parent.newValue;
+		}
+	});
+};
+
+// Returns a reduced stream, whose value represents the values of
+// this stream, 'boiled down' by function `f`.  The first value of
+// the resulting stream is the same as the next value of `this`, or
+// if `initial` is provided, `f(initial, next value of this)`.
+//
+// f: function(accumulator, value) -> accumulator'
+//
+// Like Array.prototype.reduce, but provides a view to the reduction
+// process in realtime.
+//
+// var s2 = s1.reduce(function(sum, value) { return sum + value; });
+//
+// s1: 1 1 2 2  5  6  6
+// s2: 1 2 4 6 11 17 23
+//
+// TODO example with initial`
+Stream.prototype.reduce = function reduce(f, initial) {
+	var parent = this;
+	return depends(this, stream(), function() {
+		if (this.value !== undefined) {
+			this.newValue = f(this.value, parent.newValue);
+		} else {
+			this.newValue = initial !== undefined
+				? f(initial, parent.newValue)
+				: parent.newValue;
+		}
+	}).endWhen(parent);
+};
+
+// Collect all values of a stream into an array
+Stream.prototype.collect = function collect() {
+	return this.reduce(function(array, x) {
+		return array.concat(x);
+	}, []);
+};
+
+// rewire: (Stream parent) -> Stream
+//
+// Unlink `this` from its old parents.
+//
+// Add a dependency from `parent` to `child`
+// Remove old dependencies
+//
+Stream.prototype.rewire = function rewire(newParent) {
+	for (var i = 0, len = this.parents.length; i < len; i++) {
+		var parent = this.parents[i];
+		// TODO move into .remove()
+		parent.children.splice(parent.children.indexOf(this));
+	}
+	this.parents = [];
+	return depends(newParent, this, function() {
+		this.newValue = newParent.newValue;
+	});
+};
+
+//
+// Debugging support
+//
+Stream.prototype.toString = function toString() {
+	var result = '[Stream s' + this.id;
+	function show(name, value) {
+		if (value !== undefined) {
+			result += ', ' + name + ': ' + value;
+		}
+	}
+	function showStreams(name, streams) {
+		show(name, '[' + streams.map(function(s) { return 's' + s.id; }).join(', ') + ']');
+	}
+	show('value', this.value);
+	showStreams('parents', this.parents);
+	showStreams('children', this.children);
+	return result + ']';
+};
+
+// For node.js console
+Stream.prototype.inspect = function inspect() {
+	return this.toString();
+};
+
+// A shorthand, to enable:
+//
+// var s = stream(1).commit();
+Stream.prototype.commit = function commit() {
+	stream.transaction().commit();
+	return this;
+};
+
+// Update function. For regular streams, this is a no-op.
+Stream.prototype.f = function fNoOp() {
+};
+
+Stream.prototype.ends = function ends() {
+	if (!this.endStream) {
+		this.endStream = stream();
+	}
+	return this.endStream;
+};
+
+Stream.prototype.end = function end() {
+	// TODO should probably cut ties to parents to enable GC
+	// TODO how about children?
+	if (this.endStream) {
+		// TODO within a transaction?
+		this.endStream.set(this.value);
+	}
+};
+
+// This stream ends when s ends
+Stream.prototype.endWhen = function endWhen(s) {
+	this.ends().rewire(s.ends());
+	return this;
+};
+
+// TODO endWhenOne, endWhenAll
+// for combine and merge, respectively
+
+// Shorthand
+Stream.prototype.onEnd = function onEnd(f) {
+	this.ends().forEach(f);
+};
+
+//
+// The visible part of the library is the `stream` function,
+// which creates a stream.
+//
+var stream = function stream(initial) {
 	return new Stream(initial);
 };
 
-stream.nextId = 0;
+// All streams have an `id`, starting from 1.
+// Debug functions refer to them as 's1', 's2', and so on.
+stream.nextId = 1;
 
+// Get the current transaction or create one.
 stream.transaction = function() {
 	return stream.tx || (stream.tx = new Transaction());
 };
@@ -324,8 +280,7 @@ stream.fromArray = function(array) {
 
 // Make a stream from a set of values.
 //
-// Is to `stream.toArray` what `Array.prototype.call` is to
-// `Array.prototype.apply`.
+// stream.fromValues(1,2,3) is equal to stream.fromArray([1,2,3]).
 stream.fromValues = function() {
 	var args = Array.prototype.slice.call(arguments);
 	return stream.fromArray.call(stream, args);
@@ -333,16 +288,88 @@ stream.fromValues = function() {
 
 // Make a stream from a string's characters.
 //
-// Internall calls `stream.fromArray`.
+// stream.fromString('abc') is equal to stream.fromArray('a', 'b', 'c').
 stream.fromString = function(string) {
 	return stream.fromArray(string.split(''));
 };
 
-// TODO move code around, find a logical ordering
+// TODO consider making `depends` a member of `stream`.
+//
+// In fact, it's a bit similar to `rewire`. Can they be merged?
 
-stream.combine = combine;
+// depends: (Stream parents..., Stream child, f) -> Stream
+//
+// Declare value of `child` to depend on each of `parents`.
+//
+// Whenever one or more parents is updated, `f` gets called with child
+// assigned to `this`.  Parents' `.newValue` is set if the parent has
+// been updated during this transaction. `f` should set `this.newValue`
+// if it wants to update the child.
+//
+function depends() {
+	// TODO should check that child doesn't have active .set()s in the
+	// current commit queue, or figure out another solution for that
+	//
+	// Parents are only needed for .rewire(), at least right now.
+	// But they could be used to avoid allocating new memory on `map`,
+	// etc. Every stream could have the same `updater`, which would
+	// take `f` from `this.f` and `parents` from `this.parents`
+	var arglen = arguments.length;
+	// `child` is the second last argument
+	var child = arguments[arglen - 2];
+	// `f` is the last argument
+	var f = arguments[arglen - 1];
 
-stream.merge = merge;
+	// `parents` are all except the last two arguments
+	for (var i = 0; i < arglen - 2; i++) {
+		arguments[i].children.push(child);
+		child.parents.push(arguments[i]);
+	}
+	child.f = f;
+	return child;
+}
+
+function hasNewValue(s) {
+	return s.hasOwnProperty('newValue');
+}
+
+// Return .newValue if exists, otherwise .value
+function mostRecentValue(s) {
+	if (s.hasOwnProperty('newValue'))
+		return s.newValue;
+	return s.value;
+}
+
+// combine: (Stream streams..., f) -> Stream
+// TODO document
+stream.combine = function combine() {
+	var parents = toArray(arguments);
+	var f = parents.pop();
+
+	var args = parents.concat([stream(), function() {
+		this.newValue = f.apply(null, parents.map(mostRecentValue));
+	}]);
+
+	return depends.apply(null, args);
+}
+
+// merge: (Stream streams...) -> Stream
+// TODO document
+stream.merge = function merge() {
+	var parents = toArray(arguments);
+
+	var args = parents.concat([stream(), function() {
+		var child = this;
+
+		for (var i = 0, len = parents.length; i < len; i++) {
+			if (hasNewValue(parents[i])) {
+				child.newValue = parents[i].newValue;
+			}
+		}
+	}]);
+
+	return depends.apply(null, args);
+}
 
 // Take n streams and make a stream of arrays from them that is updated
 // whenever one of the source streams is updated.
@@ -369,6 +396,7 @@ stream.zip = function() {
 //
 
 // Return array of keys in object
+// IE8 needs this
 function keys(o) {
 	if (Object.keys) {
 		return Object.keys(o);
@@ -386,14 +414,12 @@ function keys(o) {
 function find(array, test) {
 	for (var i = 0, len = array.length; i < len; i++) {
 		var item = array[i];
-		if (test(array[i])) {
-			return array[i];
+		if (test(item)) {
+			return item;
 		}
 	}
 }
 
-// Do `f` at a later time. Return a function that can be called to
-// cancel the the deferred call.
 function deferNextTick(f) {
 	var canceled = false;
 
@@ -417,6 +443,8 @@ function deferTimeout(f) {
 	};
 }
 
+// Do `f` at a later time. Return a function that can be called to
+// cancel the the deferred call.
 var defer = typeof process !== 'undefined' && process.nextTick ? deferNextTick : deferTimeout;
 
 //
@@ -498,6 +526,7 @@ function updateOrder(nodes) {
 		}
 
 		var nodeKeyWithZeroParents = find(nodeKeys, function(nodeKey) {
+			// Assert parentCounts[nodeKey] >= 0
 			return parentCounts[nodeKey] === 0;
 		});
 
@@ -518,6 +547,10 @@ Transaction.prototype.commit = function() {
 
 	var updatedStreams = {};
 	var updatedStreamsOrdered = [];
+
+//	log('commit [' + this.ops.map(function(op) {
+//		return 'set ' + op[0] + ' to ' + op[1];
+//	}).join(', ') + ']');
 
 	for (var i = 0, opsLen = this.ops.length; i < opsLen; i++) {
 		var op = this.ops[i];
