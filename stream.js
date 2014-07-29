@@ -134,7 +134,7 @@ Stream.prototype.uniq = function uniq() {
 
 function reduceUpdater(parent) {
 	if (this.value !== undefined) {
-		this.newValue = f(this.value, parent.newValue);
+		this.newValue = this.f(this.value, parent.newValue);
 	} else {
 		this.newValue = this.initial !== undefined
 			? this.f(this.initial, parent.newValue)
@@ -171,6 +171,10 @@ Stream.prototype.collect = function collect() {
 	}, []);
 };
 
+function rewireUpdater(parent) {
+	this.newValue = parent.newValue;
+}
+
 // rewire: (Stream parent) -> Stream
 //
 // Unlink `this` from its old parents.
@@ -185,10 +189,7 @@ Stream.prototype.rewire = function rewire(newParent) {
 		// TODO move into .remove()
 		parent.children.splice(parent.children.indexOf(this));
 	}
-	this.parents = [];
-	return stream.depends(newParent, this, function() {
-		this.newValue = newParent.newValue;
-	});
+	return stream.link(newParent, this, rewireUpdater);
 };
 
 //
