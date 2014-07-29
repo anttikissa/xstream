@@ -15,10 +15,33 @@ An example of using streams:
 	var s1 = stream();
 	var s2 = stream();
 	var s3 = stream.combine(s1, s2, function(a, b) { return a + b });
-	s3.forEach(value
+	s1.update(1);
+	s2.update(2);
+	s3.forEach(function(value) {
+		console.log(value);
+	});
 
-	s1. 
+	stream.tick();
+	// -> 3
 
 That's it.  Mostly.
 
+
+
+## A sketch
+
+### Simple dependencies: .map, .filter, .combine
+### merge
+### Maybe .reduce too
+### stream.from() -- kitchen sink
+### rewire
+### what does `tick()` do?
+### Some nice examples (fibonacci? snake?)
+
+Maybe to its own chapter:
+
+## Time-based things (eventually)
+
+### delay (both for ticks and millisecond timeouts)
+### pause(), play(), etc.
 

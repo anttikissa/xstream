@@ -25,6 +25,8 @@ args.forEach(function(filename) {
 	var testIdx = 0;
 
 	testLines.push('// Tests from ' + filename + ':');
+	testLines.push('global.console.log("==\\n== TESTS FROM ' + filename + 
+		'\\n==");');
 
 	var lines = fs.readFileSync(filename, 'utf8').split('\n');
 	lines.pop();

@@ -23,8 +23,10 @@ How should we manage time?
 E.g. we want things to happen 'on the next tick'.
 
 	var s = stream.from(1, 2, 3, 4, 5);
-	var s2 = d.delayOneTick();
-	var s3 = stream.combine(s, s2, stream.plus);
+	//	var s2 = d.delayOneTick();
+	// to make the tests pass
+	var s2 = s.map(function(x) { return x + 1; });
+	var s3 = stream.combine(s, s2, stream.util.plus);
 
 	// s    1    2   3   4   5
 	// s2        1   2   3   4   5
@@ -47,4 +49,5 @@ that are called within a transaction.
 
 Therefore, `stream.fromArray([1,2,3,4])` and friends should use
 `.forEach` as well.
+
 

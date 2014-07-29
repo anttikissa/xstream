@@ -1,0 +1,37 @@
+## The juicy parts
+
+This chapter attempts to answers two questions:
+
+- how does this thing work,
+- how would I implement my own combinators like `.map`, `.combine`, etc?
+
+### link / unlink
+
+### taking care of .ends(), .errors()
+
+### rewire
+
+### Design
+
+What principles guided the design of the internals
+
+### How to read the source code
+
+Conventions, figure out a good format for type signatures
+Should pick a convention for argument names, a, b, c / x, y, z, or something
+
+Maybe also a part:
+
+## Practical development
+
+- Debugging
+- performance analysis
+- making sure things are garbage collected, etc.
+
+whenever that information becomes available.
+
+## Utils
+
+- lots of these, probably will need
+- plus, inc, mul, count, min, max, pluck, limit, etc.
+

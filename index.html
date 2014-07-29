@@ -1,0 +1,745 @@
+<h1>TODO</h1>
+<ul>
+<li>onEnd() to work correctly (??? figure out the right semantics) for reduce() with an initial value and no derived values
+<li>reduce() could set .value to initialValue and just not broadcast it,
+  now would that be silly?
+<li>do some renames: set -&gt; update, talk about children and parents
+  instead of &#39;dependencies&#39; (maybe?), talk about linking and unlinking
+  instead of depends()/rewire (maybe? rewire could do just unlink from
+  current parents + link to new ones)
+<li>make <code>depends</code> actually use the same function that does that actual
+  updating, which is the same global function for <code>map</code>, <code>reduce</code>, etc
+  (maybe optimized / readabilized for map, combine2, combine3, merge2,
+  merge3, etc)
+<li>every stream to have .parents[] where it takes its parent values from
+<li>every stream to have .updater which is called when it needs to get
+  them
+<li>every stream to have .f that is the actual combinator given to .map(),
+  .reduce(), .combine() etc.
+<li>should prevent .set() from being called when the stream has parents
+  (this messes with the topological sort, sets parensCount[id] to -1,
+  should&#39;ve seen that coming)
+<li>mergeStream(stream), mergeStreamLatest(stream)
+  (or just call them flatMap(/Latest)?)
+<li>onEnd() to work correctly for other combinators, too (map works)
+<li>Examples (see end)
+<li>Figure out if dependencies need to see which parents were changed.  They
+  can check .newValue, of course, but it&#39;s a bit dirty. (Implement
+  .sampledBy and the answer will be revealed.)
+<li>.end(), .ends()
+<li>.modify(f) (maybe?)
+<li>.errors() and .catch() (OR: do we need error handling at all?)
+<li>Figure out how exceptions should work, which errors they should catch
+  and what&#39;s the difference between stream error and transaction error
+<li>Separate detailed tests out from README
+<li>Should f have <code>this</code> set to resulting node in case of map, combine, etc?
+<li>stream.from() that makes a stream out of anything, string -&gt; chars,
+  array -&gt; values, callback -&gt; value, promise -&gt; value
+</ul>
+<p>.limit(min, max)
+//  [stream 1 2 3 4 5].limit(2, 4) -&gt; [stream 2 3 4]
+//  [stream { x: 1, y: 5 } { x: 2, y: 5 } { x: 3, y: 6 } ]
+//      .limit({ x: 0, y: 6 }, { x: 2, y: 10 }) -&gt;
+//      [stream { x: 2, y: 5 } { x: 3, y: 6 }]
+<h2>streams.js</h2>
+<p>Streams, flows, sources, sinks, nodes, whatever.  Figure out a good name.
+<p>A few notes to the reader:
+<p><b>The reader should note that this README experienced explosive growth
+with very little gardening.  Things might be introduced in an illogical
+order, some things may seem irrelevant or unnecessary, and some things
+that should be mentioned might have been omitted. If you find the
+situation like that, could you be so kind as to inform me.</b>
+<p>This README is a living test suite, which explains the fact that the
+examples may feel a bit too verbose and detailed for general
+consumption. (But it&#39;s not an excuse - TODO move more detailed tests &amp;
+internal tests to another file.)
+<h2>Questions a reader might have in mind</h2>
+<p>TODO answer these eventually
+<ul>
+<li>What&#39;s the killer app? (TODO write some cool examples.)
+</ul>
+<ul>
+<li>Why is this library so special? 1) it&#39;s easy and simple and small and
+  practical 2) thoroughly documented and reasonably easy to understand,
+  there are no dependencies (You get hipster points for not using
+  jQuery.)
+</ul>
+<ul>
+<li>Is this thing reliable? (Battle-hardened in real projects? No. 100%
+  test coverage? No. Dependency handling? Not yet.)
+</ul>
+<ul>
+<li>Is it fast? (I have 10000 streams and with interdependencies, how
+  fast is commit()? No idea whatsoever.)
+</ul>
+<ul>
+<li>What&#39;s the memory footprint (Can I create 100000 streams with
+  callbacks without crashing? How about a million? Hold on. We&#39;ll come
+  to that.)
+</ul>
+<ul>
+<li>Are there memory leaks? (Can I create 1000 streams per second in a
+  long-running application and experience to not run out of memory? No
+  idea.)
+</ul>
+<ul>
+<li>Can I read and understand the source code? Is it well commented?
+  (Trying my best.)
+</ul>
+<ul>
+<li>Is it debuggable? (Will stack traces be informative? Nope. Not yet
+  at least. Eventually, might be able to do at least as much as
+  promises. Can I easily see the streams and their states in a
+  debugger? Probably, didn&#39;t check though. Do streams have identities?
+  Yes.) TODO write a section &quot;how to debug stream programs&quot;
+</ul>
+<ul>
+<li>Will the API change? (Likely; we&#39;re in 0.0.0 right now.)
+</ul>
+<ul>
+<li>Can I do anything I want with it (you can do many things but the API
+  is certainly incomplete. See below.)
+</ul>
+<ul>
+<li>I&#39;d like to do X and Y, how can I implement it easily and submit a
+  patch?
+</ul>
+<ul>
+<li>How does this relate to FRP theory and behaviors and signals and event
+  streams and push/pull? (No idea as of yet, I&#39;ll figure that part out
+  later.)
+</ul>
+<h2>Background</h2>
+<p>Draws inspiration from 
+<ul>
+<li>[menrva](https://github.com/phadej/menrva) (auto-committing transactions, taking the idea even further),
+<li>[Bacon.js](https://github.com/baconjs/bacon.js/) (lots of good ideas, trying to simplify it even more), and 
+<li>[The introduction to Reactive Programming you&#39;ve been missing](https://gist.github.com/staltz/868e7e9bc2a7b8c1f754) (the idea of calling these things &#39;streams&#39;)
+</ul>
+<h2>Introduction</h2>
+<p>The data structure of streams is a... stream.
+<p>What&#39;s a stream?  Basically,
+<ol>
+<li>A stream has a value
+<li>A stream can notify you whenever its value is updated
+</ol>
+<p>From these two properties we can derive a multitude of interesting applications.
+<p>Let&#39;s take a look at the API:
+<pre class=code>var s = require(&#39;stream&#39;);
+console.log(s) // -&gt; [object Function]</pre>
+<p>So the main API endpoint is a function. The simplest way to invoke it is
+to call it with no arguments, which creates a stream.  
+<pre class=code>var s = stream();</pre>
+<p>A stream&#39;s value is &#39;undefined&#39; by default.
+<pre class=code>var s = stream();
+console.log(s.value); // -&gt; undefined</pre>
+<p>You can set the value using <code>.set()</code>, but it won&#39;t be set immediately.
+Instead, it creates a transaction which will be committed after the
+current call stack exits:
+<pre class=code>var s = stream();
+s.set(1);
+console.log(s.value);
+// -&gt; undefined
+
+later(function() {
+    console.log(s.value);
+    // -&gt; 1
+});</pre>
+<p>As an aside (TODO put this to margin eventually) <code>later</code> is defined as:
+<pre class=code>function later(f) {
+    setTimeout(f, 1);
+}</pre>
+<p>Internally, streams use <code>setImmediate</code> or a similar mechanism to
+schedule the transaction.
+<p>TODO make this current. In node, it uses <code>process.nextTick()</code>. In the
+browser, it uses a suitable mechanism (if starvation is a problem,
+invent some suitable workaround)
+<p>You can call .commit() if you want to set a stream to its value
+immediately. A .commit() will update all streams that have a a <code>set</code> pending:
+<pre class=code>var s = stream();
+var s2 = stream();
+
+s.set(123);
+s2.set(234);
+s.commit();
+console.log(s.value); // -&gt; 123
+// commit() also commits changes to other streams
+console.log(s2.value); // -&gt; 234</pre>
+<p>(<code>s.commit()</code> is just a shorthand for <code>stream.transaction().commit()</code>.
+It exists just so you can initialize values more easily: 
+<code>s = stream(x).commit();</code>)
+<p>Back to <code>set</code>. Like many other methods of <code>stream</code>, it returns the
+stream itself:
+<pre class=code>var s = stream();
+console.log(s.set(123) === s);
+// -&gt; true</pre>
+<p>So you can write:
+<pre class=code>var s = stream().set(123).commit();
+console.log(s.value);
+// -&gt; 123</pre>
+<p>Or simply use the constructor <code>stream(value)</code>, which triggers
+<code>set(value)</code> (if <code>value</code> is defined):
+<pre class=code>var s = stream(123).commit();
+console.log(s.value);
+// -&gt; 123</pre>
+<p>You can listen for changes in a stream&#39;s value:
+<pre class=code>var s = stream();
+s.forEach(function(value) {
+    console.log(value);
+});
+
+s.set(1);
+// later:
+// -&gt; 1
+console.log(s.value); // -&gt; 1</pre>
+<p>Like <code>.set()</code>, <code>.forEach()</code> returns the set itself, so you can use them in the
+same expression:
+<pre class=code>var s = stream().forEach(function(value) {
+    console.log(&#39;s&#39;, value); 
+}).set(1);
+// later:
+// -&gt; s 1</pre>
+<p>The order of <code>.set()</code> and <code>.forEach()</code> doesn&#39;t matter, because the
+transaction only happens later:
+<pre class=code>var s = stream().set(2).forEach(function(value) {
+    console.log(&#39;s&#39;, value); 
+});
+// later:
+// -&gt; s 2</pre>
+<p>How do transactions work?
+<p>There&#39;s <code>stream.tx</code>, which is the current transaction if it exists.
+<p>Alternatively, you can call stream.transaction() to get the current
+transaction, or start a new one if there isn&#39;t one already.
+<pre class=code>//console.log(stream.tx); // x-&gt; []
+//var s = stream().set(1);
+//console.log(stream.tx); // x-&gt; [[xxx, 1]]</pre>
+<p>For demonstration purposes, we&#39;ll be using a function that just logs its
+arguments, so let&#39;s give it a name:
+<pre class=code>// because if you simply pass console.log around, it&#39;ll 
+// have the wrong `this`
+var log = console.log.bind(console);</pre>
+<p>A stream broadcasts its value always when a new value is set, even if
+it&#39;s the same as the old value:
+<pre class=code>var s = stream();
+s.forEach(log);
+s.set(1);
+setTimeout(function() {
+    // -&gt; 1
+    s.set(1);
+    setTimeout(function() {
+        // -&gt; 1
+    }, 10);
+}, 10);</pre>
+<p>However you can get a stream that only broadcasts its value when it
+changes with <code>stream.uniq()</code> (similar to Unix tool <code>uniq(1)</code>)
+<pre class=code>var s = stream();
+s.uniq().forEach(log);
+s.set(1);
+setTimeout(function() {
+    // -&gt; 1
+    s.set(1);
+    setTimeout(function() {
+        // no effect
+    }, 10);
+}, 10);</pre>
+<p>You can map streams into other streams.
+<pre class=code>var s = stream();
+s.forEach(log);
+var s2 = s.map(function(x) { return x * 2; });
+s2.forEach(function(value) {
+    console.log(&#39;s2 is&#39;, value);
+});
+
+s.set(5);
+// later:
+// -&gt; 5; s2 is 10
+
+s.set(10);
+// later:
+// -&gt; 10; s2 is 20</pre>
+<p>Transitive dependencies work:
+<pre class=code>var s = stream();
+var s2 = s.map(function(x) { return x + 1; });
+var s3 = s2.map(function(x) { return x * 2; });
+
+s3.forEach(log);
+s.set(1);
+// later:
+// -&gt; 4</pre>
+<p>You can convert an array into a stream:
+<pre class=code>var numbers = stream.fromArray([1,2,3,4,5]);
+numbers.forEach(log);
+//  numbers.onEnd(function(value) { console.log(&#39;end&#39;); });
+// later:
+// -&gt; 1; 2; 3; 4; 5</pre>
+<p>// TODO eventually add .pause(), .play(), .rewind(), .interval(),
+// maybe .delay() to these kinds of streams, give them a name
+// &#39;timed stream&#39;, &#39;buffered stream&#39;, &#39;automatic stream&#39;, &#39;generator stream&#39;,
+// or something
+<p>You should be able to set how long a delay <code>.fromArray()</code> (or a
+<code>.set()</code>) is.
+<p>//  stream.fromValues(1,2,3).delay(100);
+    // wait 100 ms, then give 1, 2, 3 in a burst
+<p>//  stream.fromValues(1).delay(100);
+    // should be equivalent to
+//  stream().set(1).delay(100);
+    // but .set() already committed a transaction!
+    // this means that we should have means to remove a stream from
+    // the transaction queue. transaction().remove(stream) -&gt;
+    // would return an array of operations.
+<p>This may need some magic (for instance, an internal .rewire())
+<p>Streams can be filtered, like arrays:
+<pre class=code>var numbers = stream.fromArray([1,2,3,4,5,6,7,8,9,10]);
+var oddNumbers = numbers.filter(function(value) {
+    return value % 2;
+});
+//  numbers.forEach(function(value) { console.log(&#39;nums&#39;, value); });
+oddNumbers.forEach(log);
+// later:
+// -&gt; 1; 3; 5; 7; 9</pre>
+<p>You can combine streams to make new streams.  Whenever one of the source
+streams is updated, the resulting stream is updated as well.
+<pre class=code>var s1 = stream(1);
+var s2 = stream(1);
+var s3 = stream.combine(s1, s2, function(value1, value2) {
+    return value1 * value2;
+});
+s3.forEach(log);
+s1.set(2);
+// later:
+// -&gt; 2
+s2.set(3);
+// later:
+// -&gt; 6</pre>
+<p>Works with three streams, as well. This example introduces two more ways
+to create a stream, <code>fromValues</code> and <code>fromString</code>:
+<p>TODO is it just an implementation artifact that s1 and s2 are updated in
+the same commit? Debug this!
+<pre class=code>var s1 = stream.fromValues(1,2,3,4,5);
+var s2 = stream.fromString(&#39;abcde&#39;);
+var s3 = s2.map(function(s) { return s.toUpperCase(); });
+
+stream.combine(s1, s2, s3, Array).forEach(log);
+// later:
+// -&gt; [ 1, &#39;a&#39;, &#39;A&#39; ]; [ 2, &#39;b&#39;, &#39;B&#39; ]; [ 3, &#39;c&#39;, &#39;C&#39; ]</pre>
+<p>Combining with <code>Array</code> is a common enough operation to warrant its own
+name, <code>zip</code>:
+<pre class=code>var s1 = stream.fromArray([1,2,3]);
+var s2 = stream.fromString(&#39;abc&#39;);
+stream.zip(s1, s2).forEach(log);
+// later:
+// -&gt; [ 1, &#39;a&#39; ]; [ 2, &#39;b&#39; ]; [ 3, &#39;c&#39; ]</pre>
+<p>TODO is there any sense in this?
+<p>Normally, streams only notify their listeners whenever their value
+changes.  But sometimes you don&#39;t care about the value, just about the
+notification.  In those cases you can trigger the notification manually:
+<pre class=code>var s = stream();
+s.forEach(function() { console.log(&#39;ping&#39;); });
+s.forEach(function() { console.log(&#39;pong&#39;); });
+s.broadcast();
+// -&gt; ping; pong</pre>
+<p>You can merge two streams:
+<pre class=code>var s = stream();
+var s2 = stream();
+var both = stream.merge(s, s2).forEach(log);
+
+s.set(1).commit();
+// -&gt; 1
+s2.set(2).commit();
+// -&gt; 2
+
+s.set(3);
+s2.set(4);
+stream.transaction().commit();
+// Note that if both streams are updated within the same
+// transaction, only the later value will be taken into
+// account in the merged stream:
+// -&gt; 4</pre>
+<p>And reduce them, like you would an array:
+<pre class=code>var s = stream.fromValues(1,2,3,4,5);
+s.reduce(function(a, b) {
+    return a + b;
+}).forEach(log);
+// later:
+// -&gt; 1; 3; 6; 10; 15</pre>
+<p>A common case of using <code>reduce</code> is collecting all values into an array.
+<code>reduce</code> gets an optional initial value.  Note that <code>reduce</code> only
+produces values whenever the original stream is updated, and therefore
+<pre class=code>var s = stream.fromValues(1,2,3);
+var all = s.reduce(function(array, value) {
+    return array.concat([value]);
+}, []);
+all.forEach(log);
+//  s.collect().forEach(log);
+// later:
+// -&gt; [ 1 ]; [ 1, 2 ]; [ 1, 2, 3 ]</pre>
+<p>The dependency handler functions should only be called after all
+children have been updated. The following example sets up a network of 9
+streams (3 sources and 6 dependent streams) and ensures that each
+dependency handler is called only once.
+<pre class=code>var s1 = stream(1);
+var s2 = stream(2);
+var s3 = stream(3);
+
+var plusCount = 0;
+var plus = function(a, b, c) { plusCount++; return a + b + c; }
+var mulCount = 0;
+var mul = function(a, b, c) { mulCount++; return a * b * c; }
+
+var s4 = stream.combine(s1, s2, s3, plus);
+var s5 = stream.combine(s1, s2, s3, plus);
+var s6 = stream.combine(s1, s2, s3, plus);
+
+var s7 = stream.combine(s4, s5, s6, mul);
+var s8 = stream.combine(s4, s5, s6, mul);
+var s9 = stream.combine(s4, s5, s6, mul).forEach(log);
+
+// later:
+// (1 + 2 + 3) * (1 + 2 + 3) * (1 + 2 + 3)
+// -&gt; 216
+// A naive implementation would call plus 9 times
+console.log(plusCount); // -&gt; 3
+// A naive implementation would call mul 27 times
+console.log(mulCount); // -&gt; 3</pre>
+<p>Sometimes it&#39;s useful to &#39;rewire&#39; streams. <code>s.rewire(newSource)</code> makes
+<code>s</code> follow the value of <code>newSource</code>, without breaking any streams or
+listeners that depend on <code>s</code> itself.
+<pre class=code>var s1 = stream(1);
+s1.map(function(x) { return x + 1; }).forEach(log);
+// later:
+// -&gt; 2
+s1.rewire(stream.combine(
+    stream(5),
+    stream.fromValues(1, 2, 3), function(a, b) {
+        return a * b;
+    }));
+// later:
+// -&gt; 6; 11; 16</pre>
+<p><code>rewire</code> discards the stream&#39;s old dependencies and copies its
+dependencies from the given stream:
+<pre class=code>var oldSource = stream(1);
+var s = oldSource.map(function(x) { return x + 1; }).forEach(log);
+// later:
+// -&gt; 2
+var newSource = stream(2);
+s.rewire(newSource);
+stream.transaction().commit();
+// -&gt; 2
+oldSource.set(5).commit();
+stream.transaction().commit();
+// no effect</pre>
+<p>Streams can end, which means that they no longer want to broadcast
+values. You can listen to end events by using the stream <code>s.ends()</code>,
+which is a stream that gets updated with the last value of the stream
+immediately when it ends:
+<pre class=code>var s = stream.fromValues(1,2,3).forEach(log);
+s.ends().forEach(function(lastValue) {
+    console.log(&#39;ended with&#39;, lastValue);
+});
+// later:
+// -&gt; 1; 2; 3; ended with 3</pre>
+<p>If a stream ends within the same transaction as its value is set, the
+end value will be same as the value set during the transaction:
+<pre class=code>var s = stream();
+s.ends().forEach(log);
+s.set(1); // the order doesn&#39;t matter; or should it?
+s.end();
+s.commit();
+// -&gt; 1</pre>
+<p>How about:
+<pre class=code>var s = stream();
+s.ends().forEach(log);
+s.set(1);
+s.end();
+s.set(2);
+s.commit();
+// should probably get something like &#39;cannot .set() and ended
+// stream&#39;</pre>
+<p>Mapped streams end when the parent stream ends:
+<pre class=code>var s = stream();
+var s2 = s.map(function(x) { return x * 2; });
+s.onEnd(function(value) { console.log(&#39;s ended with&#39;, value); });
+s2.onEnd(function(value) { console.log(&#39;s2 ended with&#39;, value); });
+s.set(123);
+s.end();
+// later:
+// -&gt; s ended with 123; s2 ended with 246</pre>
+<p>Reduced streams end when the parent stream
+<p>.merge() is actually flatMap() when generalized to streams
+.concat() similarly could also take a stream of arrays (but if one
+.end()s, the whole stream end()s and it stops listening)
+.reduce()
+.errors(),
+.ends()
+<p>.ends() should return the last value of the stream, to enable things
+like:
+<pre class=code>stream.fromArray([1,2,3,4]).reduce(function(a, b) {
+    return a + b;
+}).ends().forEach(function(sum) {
+    console.log(&#39;sum is&#39;, sum);
+    // -&gt; 10
+});</pre>
+<p>Could .ends() return multiple times?
+<p>Would a stream be able to fork() somehow?
+<pre class=code>                   ---&gt; x4&#39; ---&gt; x5&#39; ---&gt; x6&#39; ---&gt; x7&#39; ---&gt; end
+                  /
+x1 ---&gt; x2 ---&gt; x3 ---&gt; x4 ----&gt; x5 ----&gt; x6 ----&gt; end
+                         \
+                          -----&gt; x5&#39;&#39; --&gt; end</pre>
+<p><code>ends().forEach()</code> would give you x5&#39;&#39;, x6, and x7&#39;, and then <code>ends()</code>
+itself would end.  But you&#39;d have to define the semantics for what
+<code>fork()</code> means.  Maybe this needs the concept of &#39;producer functions&#39; &ndash;
+some streams (for example, stream.sample(Math.random(), 100) generalize
+nicely in this way.
+<p>It could be a nice way to explore alternative futures, but it really
+shouldn&#39;t complicate the normal implementation in any way.
+<p>TODO this was originally about .forEach() returning duplicates, which is
+the way it now works; rewrite this:
+<p>When can that be useful? For instance, if you are making a game and want
+a random number on every frame:
+<pre class=code>var randomStream = stream.sample(function() {
+    // Produce a random digit
+    return Math.random().toString().charAt(2);
+}, 1000 / 60);
+
+log(&#39;random&#39;)
+// -&gt; prints a number 60 times per second</pre>
+<p><code>sample</code>, by the way, either takes a stream or a function, and takes its
+value at a specified interval.
+<p><code>sample</code> can be used to to synchronize streams to another stream that is
+used as a clock stream, to make other streams update simultaneously:
+<pre class=code>var clock = stream.clock(1000 / 60);
+var mouseMoves = stream.fromEvent(document, &#39;mousemove&#39;).pluck([&#39;x&#39;, &#39;y&#39;]);
+var randoms = stream.sample(Math.random, clock);
+var coords = stream.sample(mouseMoveStream, clock);
+
+stream.combine(randoms, coords, function(random, coord) {
+    // do something with them
+});</pre>
+<p>You can use <code>stream.frame</code> to return a stream that is synchronized with
+an <code>requestAnimationFrame</code> callback:
+<pre class=code>var stream.frame();
+// Do stream.frame.forEach() or something to do some drawing
+// TODO How to avoid the .setImmediate caused by .forEach()?
+// .map(...).assign(domElement, &#39;property&#39;)?</pre>
+<p>You may have noticed that .map() and .forEach() are quite like the array
+functions of the same name.  Streams are like arrays in other respects,
+too.
+<p>But before that, let&#39;s introduce a third property of streams:
+<ol start=3>
+<li>A stream can notify you when it no longer wants to broadcast its value
+</ol>
+<p>You can end a stream by calling <code>stream.end()</code>, and listen to end events by
+calling <code>stream.onEnd()</code>.
+<pre class=code>var s3 = stream(1);
+s3.forEach(log);
+s3.onEnd(function() { console.log(&#39;end&#39;); });
+s3.set(2); // -&gt; 2
+s3.end(); // -&gt; end
+// you can still access its final value directly
+log(s3.value); // -&gt; 2
+// but it won&#39;t broadcast its value to listeners
+s3.set(3); // no effect</pre>
+<p>Or you can convert an array into a stream that broadcasts a new value
+every X milliseconds, using setInterval() internally:
+<pre class=code>var numbers2 = stream.fromArray([1,2,3,4,5], 100);
+numbers2.forEach(function(value) { console.log(value); });
+// (during the next 500 ms) -&gt; 1; 2; 3; 4; 5</pre>
+<p>Ranges work, too:
+<pre class=code>var someNumbers = stream.fromRange(1, 5).forEach(log); // -&gt; 1; 2; 3; 4; 5
+var allIntegers = stream.fromRange(0).forEach(log); // -&gt; 1; 2; 3; ...
+
+// The third argument is the step
+var someEvenNumbers = stream.fromRange(0, 10, 2).
+    forEach(log); // -&gt; 2; 4; 6; 8; 10
+// If you need to use step with infinite ranges, you can use Infinity
+var allEvenNumbers = stream.fromRange(0, Infinity, 2).
+    forEach(log); // -&gt; 2; 4; 6; 8; 10; ...</pre>
+<p>Several other array utilities work, too:
+<p><code>concat</code> combines several streams sequentially. Naturally, for this to
+work as expected, all of the concatenated streams must be finite, except
+for the last one.
+<pre class=code>first = stream.fromArray([1,2,3]);
+second = stream.fromArray([4,5]);
+first.concat(second).forEach(function(value) {
+    console.log(value);
+}); // -&gt; 1; 2; 3; 4; 5</pre>
+<p><code>concat</code> is actually the reason why I first needed .onEnd() and .end(),
+but I figure they might be useful in other contexts, too.
+<p>You can <code>filter</code> a stream; the resulting stream only broadcasts the
+value if a predicate returns true.
+<pre class=code>var oddNumbers = stream.fromRange(0).filter(function(value) {
+    return (value % 2);
+}).forEach(log); // -&gt; 1; 3; 5; ...</pre>
+<p><code>find</code> returns a stream whose value is undefined until a value is found
+in the stream, after which it ends immediately. If the original stream
+ends before a value is found, it ends without never yielding a value.
+<pre class=code>var numbers = stream.fromRange(0);
+var foundStream = stream.find(function(value) { return value == 42; });
+foundStream.forEach(log); // -&gt; 42</pre>
+<p>findIndex
+indexOf
+join
+pop, push?
+shift, unshift?
+reduce, reduceRight?
+<p>slice(start, end)
+take(n) is shorthand for slice(0, n)
+leave(n) is shorthand for slice(0, -n) (use sliding window .end())
+skip(n) is shorthand for slice(n)
+step(n) take every n&#39;th value
+<p>Other commonly used helpers:
+<p>also stream.zip(s1, s2, s3)
+<p>zipWith() is actually the same as combine() 
+<p>.every() is true before an element is found that makes it false?
+.some() is false before an element is found that makes it true?
+<p>Should s1.zip(s2) be a shorthand for stream.zip(s1, s2)
+and same for combine() and possibly others?
+<h2>Transactions</h2>
+<p>Stream updates are atomic: outside observers will never see inconsistent
+state.  This is achieved using transactions.
+<p>Whenever you make a modification on a stream using <code>.set()</code>, it starts a
+transaction or continues a new one.
+<p>A transaction is simply a set of modifications that will be performed on nodes:
+<pre class=code>//var s = stream(1);
+//var s2 = s.map(double);
+//log(stream.tx); // -&gt; []
+//s.set(2);
+//log(s.value); // -&gt; undefined
+//log(s2.value); // -&gt; undefined
+
+//s.forEach(log);
+//s2.forEach(log);
+
+//log(stream.tx); // -&gt; [stream(undefined), 1]
+
+// You can commit a transaction manually:
+//stream.commit(); // -&gt; 2; 4
+//log(stream.tx); // -&gt; []
+//log(s.value); // -&gt; 2
+//log(s2.value); // -&gt; 4</pre>
+<p>You can also use transactions to modify a stream atomically. Consider
+the classical bank account transfer example:
+<pre class=code>var bobAccount = stream(100); // Bob has $100
+var maryAccount = stream(200); // Mary has $200
+
+function sendMoney(from, to, amount) {
+    function deposit(balance, amount) {
+        return balance + amount;
+    }
+
+    function withdraw(balance, amount) {
+        if (amount &gt; balance) {
+            throw new InsufficientFundsException(&#39;need more&#39;);
+        }
+        return balance - value;
+    }
+
+    to.modify(function(balance) {
+        return deposit(balance, amount);
+    });
+
+    from.modify(function(balance) {
+        return withdraw(balance, amount);
+    });
+
+    // Similar to bluebird&#39;s .catch() handlers
+    stream.transaction()
+        .catch(InsufficientFundsException, function(e) {
+            console.log(e.message);
+        }).commit();
+}
+
+sendMoney(bobAccount, maryAccount, 101);
+// -&gt; need more
+console.log(bobAccount.value, maryAccount.value);
+// unchanged:
+// -&gt; 100 200
+sendMoney(maryAccount, bobAccount, 50);
+console.log(bobAccount.value, maryAccount.value);
+// -&gt; 150 150</pre>
+<p>TODO write about <code>dependency</code> instead
+<p><code>onUpdate</code> observes state changes in one stream, and optionally lets you update
+another stream within the same transaction:
+<pre class=code>var s = stream.fromRange(0);
+var oddNumbersTimesThree = stream();
+var s2 = s.onUpdate(value, function(set) {
+    if (value % 2) {
+        setS2(value * 3);
+    }
+});
+
+s.forEach(logWithPrefix(&#39;s&#39;));
+s2.forEach(logWithPrefix(&#39;s2&#39;));
+// -&gt; s 1; s2 3; s 2; s 3; s2 9; s 4; s 5; s2 15; ...</pre>
+<p>TODO should onUpdate() be called fromStream()? Probably!
+<h2>Re-wiring a stream</h2>
+<p>Conceptually, a stream consists of two parts: its identity, which
+consists of its value and its listeners, and its implementation, which
+dictates where its value comes from.
+<p>When you create a stream and give it a name, possibly using it somewhere
+else, you give it a permanent, unchangeable identity. At the same time,
+it gets an implementation.
+<pre class=code>var someStream = stream(123);
+var mapped = someStream.map(function(value) { return value * 2; });
+var combined = stream.combine(someStream, mappedStream, function(a, b) {
+    return a + b;
+});</pre>
+<p>You can now change someStream&#39;s underlying implementation by saying, for
+example:
+<pre class=code>someStream.rewire(combine(s1, s2, f(v1, v2) { ... }));</pre>
+<p>This changes causes changes in <code>s1</code> and <code>s2</code> to be propagated to
+<code>someStream</code>, and eventually to <code>mapped</code> and <code>combined</code>.
+<p>TODO circular dependencies, detecting them
+<h2>A crazy idea</h2>
+<p>That streams would, by default, always broadcast their new value, even
+if the value didn&#39;t change
+<p>What would that be called, &quot;an eager stream&quot;?
+<p>s.eager = false
+<h2>Bacon notes</h2>
+<h3>Pros</h3>
+<p>Seems to do pretty much what I expected to do with this :)
+<h3>Cons</h3>
+<p>Seems big and complex
+<p>stream.merge(...) and stream.combine(...) are not as readable as
+merge(stream1, stream2) and combine(stream1, stream2).
+<p>API reference needs examples
+<p>to .value
+<p>.rewrite is cleaner than Bacon.Bus
+<p>HOW IS IT IMPLEMENTED?
+<p>The implementation should be crystal clear and simple enough that you
+can include it in the first paragraph of the documentation.
+<p>Are things pushed or are they pulled?
+<h2>DOM events</h2>
+<p>Sure enough,
+<p>You can map DOM events into streams.
+<p>But instead of (RxJS)
+<pre class=code>var close1Button = document.querySelector(&#39;.close1&#39;);
+var close1ClickStream = Rx.Observable.fromEvent(close1Button, &#39;click&#39;);</pre>
+<p>you can use the shorthand
+<pre class=code>var clicks = stream.fromEvent(&#39;.close1&#39;, &#39;click&#39;);</pre>
+<h2>API reference</h2>
+<p>Auto-generate
+<h2>Examples</h2>
+<p>TODO 
+- Snake (like in http://philipnilsson.github.io/badness/)
+  - Especially interesting in terms of how .slidingWindowBy() would be
+    implemented in streams
+- Could implement Tetris as well since I never did that
+- Excel in 100 lines (like http://anttisykari.kapsi.fi/menrva-cells/ but with .rewire() and interface code implemented with streams)
+- ...
+- Simple parsing (filtering out &#39;<i>* *</i>&#39; and &#39;//&#39; C comments from a stream)
+- Implementing a useful primitive (like the abovementioned parser)
+- Every method in the API should have a useful real-world example
+  (otherwise it doesn&#39;t belong to the library)
+- Create a &#39;make&#39; style build tool
+- Convert mktest into using streams
+- Classic autocomplete example
+<ul>
+<li>http://elm-lang.org/ has the time traveling thing
+<li>form with username &amp; two password fields
+  - check that passwords match
+  - that username/email is not taken
+  - etc.
+  - maybe validate email too
+</ul>

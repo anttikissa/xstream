@@ -4,8 +4,9 @@ cd $(dirname $0)
 
 mkdir -p tmp
 # node test.js
-./mktest README.md > tmp/test.js
-echo Generated tmp/test.js from README.md.
+SOURCES="README.pre docs/*.pre"
+./mktest $SOURCES > tmp/test.js
+echo Generated tmp/test.js from $SOURCES
 echo Running tmp/test.js...
 node tmp/test.js
 

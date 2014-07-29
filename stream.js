@@ -58,15 +58,24 @@ Stream.prototype.forEach = function forEach(f) {
 	return this;
 };
 
-// Set my value to `value`. The value will be updated, and listeners will
-// be notified, when the next transaction is committed.
-Stream.prototype.set = function set(value) {
-	var that = this;
-
+// Update my value to `value`.
+//
+// The value of this stream and the values of streams depending on it
+// will be updated during this tick.
+//
+// `.forEach` listeners for the updated streams will be called at the
+// end of this tick.
+Stream.prototype.update = function update(value) {
 	var tx = stream.transaction();
-	tx.set(that, value);
+	tx.set(this, value);
 	return this;
 };
+
+// Deprecated name for `update`. For test compatibility.
+Stream.prototype.set = function set(value) {
+	return this.update(value);
+};
+
 
 // Returns a stream whose value is updated with `f(x)` whenever this
 // stream's value is updated with `x`.
@@ -264,15 +273,37 @@ var stream = function stream(initial) {
 stream.nextId = 1;
 
 // Get the current transaction or create one.
-stream.transaction = function() {
+stream.transaction = function transaction() {
 	return stream.tx || (stream.tx = new Transaction());
 };
+
+// Commit the current transaction.
+stream.tick = function tick() {
+	stream.transaction().commit();
+}
+
+// Make a stream out of anything.
+//
+// stream.from: PrettyMuchAnything... -> Stream
+//
+// If `arguments` is a set 
+stream.from = function from(first) {
+	if (typeof first === 'string') {
+		return stream.fromString(first);
+	}
+	if (first instanceof Array) {
+		return stream.fromArray(first);
+	}
+	// TODO promises, callbacks, generators, etc.
+	// Fall back to `.fromValues`.
+	return stream.fromValues.apply(stream, arguments);
+}
 
 // Make a stream from an array.
 //
 // Set the the first value in the current transaction and the following
 // values in following transactions.
-stream.fromArray = function(array) {
+stream.fromArray = function fromArray(array) {
 	// TODO ensure it's an array
 	// at least in debug build
 	var result = stream();
@@ -293,7 +324,7 @@ stream.fromArray = function(array) {
 // Make a stream from a set of values.
 //
 // stream.fromValues(1,2,3) is equal to stream.fromArray([1,2,3]).
-stream.fromValues = function() {
+stream.fromValues = function fromValues() {
 	var args = Array.prototype.slice.call(arguments);
 	return stream.fromArray.call(stream, args);
 };
@@ -301,7 +332,7 @@ stream.fromValues = function() {
 // Make a stream from a string's characters.
 //
 // stream.fromString('abc') is equal to stream.fromArray('a', 'b', 'c').
-stream.fromString = function(string) {
+stream.fromString = function fromString(string) {
 	return stream.fromArray(string.split(''));
 };
 
@@ -382,6 +413,27 @@ stream.merge = function merge() {
 
 	return depends.apply(null, args);
 }
+
+//
+// stream.util is a collection of useful functions.
+//
+stream.util = {};
+
+// Add two numbers.
+//
+// plus(Number, Number) -> Number
+//
+// (Or you can use it for strings, too, if you're creative.)
+stream.util.plus = function plus(a, b) { return a + b; };
+
+// Return number increased by 1.
+//
+// inc(Number) -> Number
+stream.util.inc = function inc(a) { return a + 1; };
+
+// TODO more utils
+
+
 
 // Take n streams and make a stream of arrays from them that is updated
 // whenever one of the source streams is updated.
