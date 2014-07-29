@@ -520,8 +520,8 @@ end value will be same as the value set during the transaction:
 
 	var s = stream();
 	s.ends().forEach(log);
-	s.end();
 	s.set(1); // the order doesn't matter; or should it?
+	s.end();
 	s.commit();
 	// -> 1
 
