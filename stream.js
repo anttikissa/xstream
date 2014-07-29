@@ -103,6 +103,12 @@ Stream.prototype.map = function map(f) {
 	// TODO stream.ends() can just be rewired from parent.ends().map(f)
 };
 
+function filterUpdater() {
+	if (this.f(this.parents[0].newValue)) {
+		this.newValue = this.parents[0].newValue;
+	}
+}
+
 // Returns a stream whose value is updated with `x` whenever this 
 // stream's value is updated with `x`, if `f(x)` is true.
 //
@@ -111,12 +117,7 @@ Stream.prototype.map = function map(f) {
 // s1: 1 1 2 2 5 6 6
 // s2: 1 1     5
 Stream.prototype.filter = function filter(f) {
-	var parent = this;
-	return stream.depends(this, stream(), function() {
-		if (f(parent.newValue)) {
-			this.newValue = parent.newValue;
-		}
-	});
+	return stream.link(this, stream(), filterUpdater, f);
 };
 
 // Returns a stream whose value is the same as this stream's value,
@@ -508,6 +509,16 @@ stream.util.plus = function plus(a, b) { return a + b; };
 //
 // stream.util.inc(Number) -> Number
 stream.util.inc = function inc(a) { return a + 1; };
+
+// Is number even?
+//
+// stream.util.isEven(Number) -> Boolean
+stream.util.isEven = function isEven(a) { return !(a % 2); }
+
+// Is number odd?
+//
+// stream.util.isOdd(Number) -> Boolean
+stream.util.isOdd = function isOdd(a) { return !!(a % 2); }
 
 //
 // Debugging utilities
