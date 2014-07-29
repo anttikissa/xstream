@@ -121,7 +121,6 @@ Stream.prototype.filter = function filter(f) {
 };
 
 function uniqUpdater() {
-	console.log('uniqUpdater called, this.value', this.value, 'parent newValue', this.parents[0].newValue);
 	if (this.value !== this.parents[0].newValue) {
 		this.newValue = this.parents[0].newValue;
 	}
@@ -451,22 +450,20 @@ stream.combine = function combine() {
 	return stream.depends.apply(null, args);
 }
 
+var mergeUpdater = function() {
+	for (var i = 0, len = this.parents.length; i < len; i++) {
+		if (hasNewValue(this.parents[i])) {
+			this.newValue = this.parents[i].newValue;
+		}
+	}
+}
+
+
 // stream.merge(Stream streams...) -> Stream
 // TODO document
 stream.merge = function merge() {
 	var parents = toArray(arguments);
-
-	var args = parents.concat([stream(), function() {
-		var child = this;
-
-		for (var i = 0, len = parents.length; i < len; i++) {
-			if (hasNewValue(parents[i])) {
-				child.newValue = parents[i].newValue;
-			}
-		}
-	}]);
-
-	return stream.depends.apply(null, args);
+	return stream.link(parents, stream(), mergeUpdater);
 }
 
 // Take n streams and make a stream of arrays from them that is updated
