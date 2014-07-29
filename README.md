@@ -34,6 +34,8 @@
   and what's the difference between stream error and transaction error
 - Separate detailed tests out from README
 - Should f have `this` set to resulting node in case of map, combine, etc?
+- stream.from() that makes a stream out of anything, string -> chars,
+  array -> values, callback -> value, promise -> value
 
 .limit(min, max)
 //	[stream 1 2 3 4 5].limit(2, 4) -> [stream 2 3 4]
@@ -115,8 +117,6 @@ Draws inspiration from
 
 ## Introduction
 
-"It is better to have 100 functions operate on one data structure than
-10 functions on 10 data structures." —Alan Perlis
 
 The data structure of streams is a... stream.
 
@@ -515,18 +515,39 @@ immediately when it ends:
 	// later:
 	// -> 1; 2; 3; ended with 3
 
+If a stream ends within the same transaction as its value is set, the
+end value will be same as the value set during the transaction:
+
+	var s = stream();
+	s.ends().forEach(log);
+	s.end();
+	s.set(1); // the order doesn't matter; or should it?
+	s.commit();
+	// -> 1
+
+How about:
+
+	var s = stream();
+	s.ends().forEach(log);
+	s.set(1);
+	s.end();
+	s.set(2);
+	s.commit();
+	// should probably get something like 'cannot .set() and ended
+	// stream'
+
 Mapped streams end when the parent stream ends:
 
-	var id = function(x) { return x; };
 	var s = stream();
-	var s2 = s.map(id).forEach(log);
-	s.ends().forEach(function() { console.log('s ends'); });
-	s2.ends().forEach(function() { console.log('s2 ends'); });
+	var s2 = s.map(function(x) { return x * 2; });
+	s.onEnd(function(value) { console.log('s ended with', value); });
+	s2.onEnd(function(value) { console.log('s2 ended with', value); });
 	s.set(123);
 	s.end();
 	// later:
-	// -> 123
+	// -> s ended with 123; s2 ended with 246
 
+Reduced streams end when the parent stream
 
 .merge() is actually flatMap() when generalized to streams
 .concat() similarly could also take a stream of arrays (but if one

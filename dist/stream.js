@@ -18,8 +18,8 @@ var module = {};
 //
 
 // Identical to console.log but shorter to write
-//var log = console.log.bind(console);
-var log = function() {};
+var log = console.log.bind(console);
+//var log = function() {};
 
 // Convert argument-like object to array
 function toArray(args) {
@@ -85,7 +85,8 @@ Stream.prototype.map = function map(f) {
 	var parent = this;
 	return depends(parent, stream(), function() {
 		this.newValue = f(parent.newValue);
-	}).endWhen(this);
+	}).endWhen(this); // won't work!
+	// TODO stream.ends() can just be rewired from parent.ends().map(f)
 };
 
 // Returns a stream whose value is updated with `x` whenever this 
@@ -165,6 +166,7 @@ Stream.prototype.collect = function collect() {
 //
 Stream.prototype.rewire = function rewire(newParent) {
 	for (var i = 0, len = this.parents.length; i < len; i++) {
+		log
 		var parent = this.parents[i];
 		// TODO move into .remove()
 		parent.children.splice(parent.children.indexOf(this));
@@ -221,6 +223,12 @@ Stream.prototype.ends = function ends() {
 Stream.prototype.end = function end() {
 	// TODO should probably cut ties to parents to enable GC
 	// TODO how about children?
+	// when end() is part of a transaction 
+	// var s = stream();
+	// s.onEnd(log);
+	// s.set(1);
+	// s.end();
+	// -> should print 1
 	if (this.endStream) {
 		// TODO within a transaction?
 		this.endStream.set(this.value);
@@ -228,8 +236,12 @@ Stream.prototype.end = function end() {
 };
 
 // This stream ends when s ends
-Stream.prototype.endWhen = function endWhen(s) {
-	this.ends().rewire(s.ends());
+// TODO test that mapped/reduced streams end properly
+Stream.prototype.endWhen = function endWhen(parent) {
+	var that = this;
+	depends(parent.ends(), this.ends(), function() {
+		this.newValue = parent.value;
+	});
 	return this;
 };
 
