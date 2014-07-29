@@ -136,9 +136,7 @@ function reduceUpdater(parent) {
 	if (this.value !== undefined) {
 		this.newValue = this.f(this.value, parent.newValue);
 	} else {
-		this.newValue = this.initial !== undefined
-			? this.f(this.initial, parent.newValue)
-			: parent.newValue;
+		this.newValue = parent.newValue;
 	}
 }
 
@@ -160,7 +158,7 @@ function reduceUpdater(parent) {
 // TODO example with initial`
 Stream.prototype.reduce = function reduce(f, initial) {
 	var result = stream();
-	result.initial = initial;
+	result.value = initial;
 	return stream.link(this, result, reduceUpdater, f);
 };
 
@@ -184,7 +182,6 @@ function rewireUpdater(parent) {
 //
 Stream.prototype.rewire = function rewire(newParent) {
 	for (var i = 0, len = this.parents.length; i < len; i++) {
-//		log
 		var parent = this.parents[i];
 		// TODO move into .remove()
 		parent.children.splice(parent.children.indexOf(this));
