@@ -1,0 +1,79 @@
+<!doctype html>
+<head>
+<title>Cells test</title>
+<script src='../dist/stream.js'></script>
+<script>
+
+	var log = console.log.bind(console);
+
+	// split into eventStream() and .get()
+	// that accesses e.target.value
+	function eventStream(el, event) {
+		var result = stream();
+		el.addEventListener(event, function(e) {
+			result.set(e.target.value);
+		});
+		return result;
+	}
+
+	function init() {
+
+		var cells = {};
+
+		setTimeout(function() {
+			cells.B1.stream.set(123);
+		}, 200);
+
+		function elem(type) {
+			return document.createElement(type);
+		}
+
+		function cell(id) {
+			var el = elem('input');
+			cells[id] = el;
+			el.value;
+			el.stream = stream();
+			// debugging
+			el.stream.forEach(function(value) {
+				log(id, 'set to', value);
+			});
+			var changes = eventStream(el, 'change');
+			el.stream.rewire(changes);
+
+			changes.forEach(function(value) {
+				if (value[0] === '=') {
+					log('dynamic value', value);
+				}
+			});
+			return el;
+		}
+
+		// This is really an operation that concatenates a stream of
+		// streams.
+		// So it should be called stream.concat() or something.
+		// concatStream() possibly, if mergeStream() is the flatMap one.
+		// and mergeLatest() flatMapLatest
+		// should it actually be mapLatest()
+		// Oh, by the way, concatStream is a generalization of
+		// async.series and mergeStream is a generalization of
+		// async.parallel
+		stream.fromArray([1,2,3,4,5,6,7,8,9,10]).forEach(function(row) {
+			stream.fromString('ABCDEFGHI').map(function(column) {
+				return cell(column + row);
+			}).collect().onEnd(function(els) {
+				els.forEach(function(el) {
+					document.body.appendChild(el);
+				});
+				document.body.appendChild(elem('br'));
+			});
+		});
+
+		setTimeout(function() {
+			cells.A1.focus();
+		}, 100);
+	}
+
+</script>
+
+<body onload='init(this);'></body>
+
