@@ -132,6 +132,16 @@ Stream.prototype.uniq = function uniq() {
 	return stream.link(this, stream(), uniqUpdater);
 };
 
+function reduceUpdater(parent) {
+	if (this.value !== undefined) {
+		this.newValue = f(this.value, parent.newValue);
+	} else {
+		this.newValue = this.initial !== undefined
+			? this.f(this.initial, parent.newValue)
+			: parent.newValue;
+	}
+}
+
 // Returns a reduced stream, whose value represents the values of
 // this stream, 'boiled down' by function `f`.  The first value of
 // the resulting stream is the same as the next value of `this`, or
@@ -149,16 +159,9 @@ Stream.prototype.uniq = function uniq() {
 //
 // TODO example with initial`
 Stream.prototype.reduce = function reduce(f, initial) {
-	var parent = this;
-	return stream.depends(this, stream(), function() {
-		if (this.value !== undefined) {
-			this.newValue = f(this.value, parent.newValue);
-		} else {
-			this.newValue = initial !== undefined
-				? f(initial, parent.newValue)
-				: parent.newValue;
-		}
-	}).endWhen(parent);
+	var result = stream();
+	result.initial = initial;
+	return stream.link(this, result, reduceUpdater, f);
 };
 
 // Collect all values of a stream into an array
@@ -439,7 +442,6 @@ function combine2Updater(firstParent, secondParent) {
 }
 
 function combine3Updater(firstParent, secondParent, thirdParent) {
-	console.log(arguments);
 	this.newValue = this.f(
 		mostRecentValue(firstParent),
 		mostRecentValue(secondParent),
