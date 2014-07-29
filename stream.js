@@ -120,6 +120,13 @@ Stream.prototype.filter = function filter(f) {
 	return stream.link(this, stream(), filterUpdater, f);
 };
 
+function uniqUpdater() {
+	console.log('uniqUpdater called, this.value', this.value, 'parent newValue', this.parents[0].newValue);
+	if (this.value !== this.parents[0].newValue) {
+		this.newValue = this.parents[0].newValue;
+	}
+}
+
 // Returns a stream whose value is the same as this stream's value,
 // but is only broadcast whenever this stream's value changes.
 //
@@ -128,12 +135,8 @@ Stream.prototype.filter = function filter(f) {
 // s1: 1 1 2 2 5 6 6 
 // s2: 1   2   5 6
 Stream.prototype.uniq = function uniq() {
-	var parent = this;
-	return stream.depends(this, stream(), function() {
-		if (this.value !== parent.newValue) {
-			this.newValue = parent.newValue;
-		}
-	});
+	// TODO f could be the equals function?
+	return stream.link(this, stream(), uniqUpdater);
 };
 
 // Returns a reduced stream, whose value represents the values of
@@ -181,7 +184,7 @@ Stream.prototype.collect = function collect() {
 //
 Stream.prototype.rewire = function rewire(newParent) {
 	for (var i = 0, len = this.parents.length; i < len; i++) {
-		log
+//		log
 		var parent = this.parents[i];
 		// TODO move into .remove()
 		parent.children.splice(parent.children.indexOf(this));

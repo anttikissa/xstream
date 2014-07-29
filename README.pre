@@ -1,7 +1,15 @@
 
 # TODO
 
-- onEnd() to work correctly (??? figure out the right semantics) for reduce() with an initial value and no derived values
+- crazy idea (or maybe, in hindsight, not so crazy): .rewire(), instead
+  of adding a new node and making `this` depend on it, it could just go to
+  `.children`() and replace itself with the stream that was given to it
+  -- this way there would be no intermediate node and graphs could be
+  kept tidy.  BUT of course, all variable references to the old stream
+  would still be intact.  So that would be something like
+  .rewireDangerousShortcut().
+- onEnd() to work correctly (??? figure out the right semantics) for
+  reduce() with an initial value and no derived values
 - reduce() could set .value to initialValue and just not broadcast it,
   now would that be silly?
 - do some renames: set -> update, talk about children and parents
