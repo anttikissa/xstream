@@ -63,10 +63,27 @@
 <pre class=code>var s1 = stream();
 var s2 = stream();
 var s3 = stream.combine(s1, s2, function(a, b) { return a + b });
-s3.forEach(value
+s1.update(1);
+s2.update(2);
+s3.forEach(function(value) {
+    console.log(value);
+});
 
-s1. </pre>
+stream.tick();
+// -&gt; 3</pre>
 <p>That&#39;s it.  Mostly.
+<h2>A sketch</h2>
+<h3>Simple dependencies: .map, .filter, .combine</h3>
+<h3>merge</h3>
+<h3>Maybe .reduce too</h3>
+<h3>stream.from() &ndash; kitchen sink</h3>
+<h3>rewire</h3>
+<h3>what does <code>tick()</code> do?</h3>
+<h3>Some nice examples (fibonacci? snake?)</h3>
+<p>Maybe to its own chapter:
+<h2>Time-based things (eventually)</h2>
+<h3>delay (both for ticks and millisecond timeouts)
+### pause(), play(), etc.</h3>
 <h2>Errors, ends, and broken things</h2>
 <p>In the real world, a stream of values is not always enough.  Sometimes
 <ul>
@@ -75,6 +92,10 @@ s1. </pre>
 </ul>
 <p>So...
 <h2>Transactions</h2>
+<blockquote><p>&quot;And I didn&#39;t have any idea what to do but I knew I needed a click so
+we put a click on the 24 track which then was synced to the moog
+modular.&quot; —Giorgio Moroder
+</blockquote>
 <p>As we&#39;ve seen, transactions are what make streams tick.
 <p>Quite literally so, as the function <code>stream.tick()</code> is what is used to complete a
 transaction.
@@ -91,8 +112,10 @@ stream.tick();
 <p>How should we manage time?
 <p>E.g. we want things to happen &#39;on the next tick&#39;.
 <pre class=code>var s = stream.from(1, 2, 3, 4, 5);
-var s2 = d.delayOneTick();
-var s3 = stream.combine(s, s2, stream.plus);
+//  var s2 = d.delayOneTick();
+// to make the tests pass
+var s2 = s.map(function(x) { return x + 1; });
+var s3 = stream.combine(s, s2, stream.util.plus);
 
 // s    1    2   3   4   5
 // s2        1   2   3   4   5
