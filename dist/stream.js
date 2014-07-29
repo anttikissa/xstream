@@ -36,16 +36,27 @@ function access(selector) {
 }
 
 function Stream(initial) {
-	this.listeners = []; // 'external' listeners
-	this.parents = []; // my dependencies
-	this.children = []; // 'internal' listeners
-	this.value = undefined;
 	this.id = stream.nextId++;
+	this.parents = []; // streams I depend on
+	this.children = []; // streams that depend on me
+	this.listeners = []; // listeners that get my value when it updates
+	this.value = undefined;
+	this.updater = function() {};
+	this.f = null;
 
 	if (initial !== undefined) {
-		this.set(initial);
+		this.update(initial);
 	}
 };
+
+// Set the initial value of a stream to a given value 'silently',
+// without broadcasting it.
+//
+// Return this.
+Stream.prototype.withInitialValue = function withInitialValue(value) {
+	this.value = value;
+	return this;
+}
 
 // Tell my listeners that my value has been updated.
 Stream.prototype.broadcast = function broadcast() {
@@ -60,15 +71,27 @@ Stream.prototype.forEach = function forEach(f) {
 	return this;
 };
 
-// Set my value to `value`. The value will be updated, and listeners will
-// be notified, when the next transaction is committed.
-Stream.prototype.set = function set(value) {
-	var that = this;
-
+// Update my value to `value`.
+//
+// The value of this stream and the values of streams depending on it
+// will be updated during this tick.
+//
+// `.forEach` listeners for the updated streams will be called at the
+// end of this tick.
+Stream.prototype.update = function update(value) {
 	var tx = stream.transaction();
-	tx.set(that, value);
+	tx.set(this, value);
 	return this;
 };
+
+// Deprecated name for `update`. For test compatibility.
+Stream.prototype.set = function set(value) {
+	return this.update(value);
+};
+
+function mapUpdater(parent) {
+	this.newValue = this.f(parent.newValue);
+}
 
 // Returns a stream whose value is updated with `f(x)` whenever this
 // stream's value is updated with `x`.
@@ -82,12 +105,14 @@ Stream.prototype.set = function set(value) {
 // Should we implement it in terms of a more complex and generalized
 // function or leave it as is?
 Stream.prototype.map = function map(f) {
-	var parent = this;
-	return depends(parent, stream(), function() {
-		this.newValue = f(parent.newValue);
-	}).endWhen(this); // won't work!
-	// TODO stream.ends() can just be rewired from parent.ends().map(f)
+	return stream.link(this, stream(), mapUpdater, f);
 };
+
+function filterUpdater(parent) {
+	if (this.f(parent.newValue)) {
+		this.newValue = parent.newValue;
+	}
+}
 
 // Returns a stream whose value is updated with `x` whenever this 
 // stream's value is updated with `x`, if `f(x)` is true.
@@ -95,15 +120,16 @@ Stream.prototype.map = function map(f) {
 // var s2 = s1.filter(isOdd);
 //
 // s1: 1 1 2 2 5 6 6
-// s2: 1 1	 5
+// s2: 1 1     5
 Stream.prototype.filter = function filter(f) {
-	var parent = this;
-	return depends(this, stream(), function() {
-		if (f(parent.newValue)) {
-			this.newValue = parent.newValue;
-		}
-	});
+	return stream.link(this, stream(), filterUpdater, f);
 };
+
+function uniqUpdater(parent) {
+	if (this.value !== parent.newValue) {
+		this.newValue = parent.newValue;
+	}
+}
 
 // Returns a stream whose value is the same as this stream's value,
 // but is only broadcast whenever this stream's value changes.
@@ -113,13 +139,17 @@ Stream.prototype.filter = function filter(f) {
 // s1: 1 1 2 2 5 6 6 
 // s2: 1   2   5 6
 Stream.prototype.uniq = function uniq() {
-	var parent = this;
-	return depends(this, stream(), function() {
-		if (this.value !== parent.newValue) {
-			this.newValue = parent.newValue;
-		}
-	});
+	// TODO f could be the equals function?
+	return stream.link(this, stream(), uniqUpdater);
 };
+
+function reduceUpdater(parent) {
+	if (this.value !== undefined) {
+		this.newValue = this.f(this.value, parent.newValue);
+	} else {
+		this.newValue = parent.newValue;
+	}
+}
 
 // Returns a reduced stream, whose value represents the values of
 // this stream, 'boiled down' by function `f`.  The first value of
@@ -138,16 +168,7 @@ Stream.prototype.uniq = function uniq() {
 //
 // TODO example with initial`
 Stream.prototype.reduce = function reduce(f, initial) {
-	var parent = this;
-	return depends(this, stream(), function() {
-		if (this.value !== undefined) {
-			this.newValue = f(this.value, parent.newValue);
-		} else {
-			this.newValue = initial !== undefined
-				? f(initial, parent.newValue)
-				: parent.newValue;
-		}
-	}).endWhen(parent);
+	return stream.link(this, stream().withInitialValue(initial), reduceUpdater, f);
 };
 
 // Collect all values of a stream into an array
@@ -156,6 +177,10 @@ Stream.prototype.collect = function collect() {
 		return array.concat(x);
 	}, []);
 };
+
+function rewireUpdater(parent) {
+	this.newValue = parent.newValue;
+}
 
 // rewire: (Stream parent) -> Stream
 //
@@ -166,15 +191,11 @@ Stream.prototype.collect = function collect() {
 //
 Stream.prototype.rewire = function rewire(newParent) {
 	for (var i = 0, len = this.parents.length; i < len; i++) {
-		log
 		var parent = this.parents[i];
 		// TODO move into .remove()
 		parent.children.splice(parent.children.indexOf(this));
 	}
-	this.parents = [];
-	return depends(newParent, this, function() {
-		this.newValue = newParent.newValue;
-	});
+	return stream.link(newParent, this, rewireUpdater);
 };
 
 //
@@ -191,6 +212,7 @@ Stream.prototype.toString = function toString() {
 		show(name, '[' + streams.map(function(s) { return 's' + s.id; }).join(', ') + ']');
 	}
 	show('value', this.value);
+	show('newValue', this.newValue);
 	showStreams('parents', this.parents);
 	showStreams('children', this.children);
 	return result + ']';
@@ -239,7 +261,7 @@ Stream.prototype.end = function end() {
 // TODO test that mapped/reduced streams end properly
 Stream.prototype.endWhen = function endWhen(parent) {
 	var that = this;
-	depends(parent.ends(), this.ends(), function() {
+	stream.depends(parent.ends(), this.ends(), function() {
 		this.newValue = parent.value;
 	});
 	return this;
@@ -266,15 +288,39 @@ var stream = function stream(initial) {
 stream.nextId = 1;
 
 // Get the current transaction or create one.
-stream.transaction = function() {
+stream.transaction = function transaction() {
 	return stream.tx || (stream.tx = new Transaction());
 };
 
+// Commit the current transaction.
+stream.tick = function tick() {
+	stream.transaction().commit();
+}
+
+// Make a stream out of pretty much anything.
+//
+// stream.from(String) -> Stream
+// stream.from([Object]) -> Stream
+// stream.from(Object...) -> Stream
+stream.from = function from(first) {
+	if (typeof first === 'string') {
+		return stream.fromString(first);
+	}
+	if (first instanceof Array) {
+		return stream.fromArray(first);
+	}
+	// TODO promises, callbacks, generators, etc.
+	// Fall back to `.fromValues`.
+	return stream.fromValues.apply(stream, arguments);
+}
+
 // Make a stream from an array.
+//
+// stream.fromArray([Object]) -> Stream
 //
 // Set the the first value in the current transaction and the following
 // values in following transactions.
-stream.fromArray = function(array) {
+stream.fromArray = function fromArray(array) {
 	// TODO ensure it's an array
 	// at least in debug build
 	var result = stream();
@@ -292,26 +338,67 @@ stream.fromArray = function(array) {
 	return result;
 };
 
-// Make a stream from a set of values.
+// Make a stream from a list of values.
+//
+// stream.fromArray(Object...) -> Stream
 //
 // stream.fromValues(1,2,3) is equal to stream.fromArray([1,2,3]).
-stream.fromValues = function() {
+stream.fromValues = function fromValues() {
 	var args = Array.prototype.slice.call(arguments);
 	return stream.fromArray.call(stream, args);
 };
 
 // Make a stream from a string's characters.
 //
+// stream.fromString(String) -> Stream
+//
 // stream.fromString('abc') is equal to stream.fromArray('a', 'b', 'c').
-stream.fromString = function(string) {
+stream.fromString = function fromString(string) {
 	return stream.fromArray(string.split(''));
 };
 
-// TODO consider making `depends` a member of `stream`.
+// Link stream to one or more parents.
 //
-// In fact, it's a bit similar to `rewire`. Can they be merged?
+// stream.link(
+//     Stream parent, Stream child,
+//     Function updater, Function f = null) -> Stream
+//
+// stream.link(
+//     [Stream] parents, Stream child,
+//     Function updater, Function f = null) -> Stream
+//
+// Establish a dependency relationship a between a stream (`child`) and
+// one or more dependencies (`parents`).
+//
+// Set child.parents to parents, child.updater to updater, and child.f
+// to f.
+//
+// Whenever a parent is updated within a transaction, `updater` will be
+// called with `child` as `this`.  `updater` will only be called once
+// per transaction, and only after all of child's parents have been
+// updated.
+//
+// It should set `this.newValue` if it wants to update `child`'s value,
+// and otherwise do nothing.  The `newValue` attribute of parent streams
+// has been set for those parents that were updated during this tick. 
+//
+// Return child.
+stream.link = function link(parents, child, updater, f) {
+	if (parents instanceof Stream) {
+		parents = [parents];
+	}
 
-// depends: (Stream parents..., Stream child, f) -> Stream
+	for (var i = 0, len = parents.length; i < len; i++) {
+		parents[i].children.push(child);
+	}
+	child.parents = parents;
+	child.updater = updater;
+	child.f = f || null;
+
+	return child;
+};
+
+// stream.depends(Stream parents..., Stream child, f) -> Stream
 //
 // Declare value of `child` to depend on each of `parents`.
 //
@@ -320,7 +407,8 @@ stream.fromString = function(string) {
 // been updated during this transaction. `f` should set `this.newValue`
 // if it wants to update the child.
 //
-function depends() {
+stream.depends = function depends() {
+	log('depends');
 	// TODO should check that child doesn't have active .set()s in the
 	// current commit queue, or figure out another solution for that
 	//
@@ -354,41 +442,66 @@ function mostRecentValue(s) {
 	return s.value;
 }
 
-// combine: (Stream streams..., f) -> Stream
+function combine2Updater(firstParent, secondParent) {
+	this.newValue = this.f(
+		mostRecentValue(firstParent),
+		mostRecentValue(secondParent));
+}
+
+function combine3Updater(firstParent, secondParent, thirdParent) {
+	this.newValue = this.f(
+		mostRecentValue(firstParent),
+		mostRecentValue(secondParent),
+		mostRecentValue(thirdParent));
+}
+
+function combineUpdater() {
+	var values = this.parents.map(mostRecentValue);
+	this.newValue = this.f.apply(null, values);
+};
+
+// stream.combine(Stream streams..., f) -> Stream
 // TODO document
 stream.combine = function combine() {
 	var parents = toArray(arguments);
 	var f = parents.pop();
+	var updater = parents.length === 2 ? combine2Updater :
+		parents.length === 3 ? combine3Updater :
+		combineUpdater;
 
-	var args = parents.concat([stream(), function() {
-		this.newValue = f.apply(null, parents.map(mostRecentValue));
-	}]);
-
-	return depends.apply(null, args);
+	return stream.link(parents, stream(), updater, f);
 }
 
-// merge: (Stream streams...) -> Stream
+function merge2Updater(firstParent, secondParent) {
+	if (hasNewValue(firstParent)) {
+		this.newValue = firstParent.newValue;
+	}
+	if (hasNewValue(secondParent)) {
+		this.newValue = secondParent.newValue;
+	}
+}
+
+function mergeUpdater() {
+	// arguments === this.parents
+	for (var i = 0, len = arguments.length; i < len; i++) {
+		if (hasNewValue(arguments[i])) {
+			this.newValue = arguments[i].newValue;
+		}
+	}
+}
+
+// stream.merge(Stream streams...) -> Stream
 // TODO document
 stream.merge = function merge() {
 	var parents = toArray(arguments);
-
-	var args = parents.concat([stream(), function() {
-		var child = this;
-
-		for (var i = 0, len = parents.length; i < len; i++) {
-			if (hasNewValue(parents[i])) {
-				child.newValue = parents[i].newValue;
-			}
-		}
-	}]);
-
-	return depends.apply(null, args);
+	var updater = parents.length === 2 ? merge2Updater : mergeUpdater;
+	return stream.link(parents, stream(), updater);
 }
 
 // Take n streams and make a stream of arrays from them that is updated
 // whenever one of the source streams is updated.
 //
-// stream.zip(stream1, stream2, ...)
+// stream.zip(stream1, stream2, ...) -> Stream
 //
 // Example:
 //
@@ -404,6 +517,71 @@ stream.zip = function() {
 	args.push(Array);
 	return stream.combine.apply(null, args);
 };
+
+
+//
+// A collection of useful functions.
+//
+
+stream.util = {};
+
+// Identity function
+//
+// stream.util.identity(Object) -> Object
+stream.util.identity = function identity(a) { return a; };
+
+// Add two numbers.
+//
+// stream.util.plus(Number, Number) -> Number
+//
+// (Or you can use it for strings, too, if you're creative.)
+stream.util.plus = function plus(a, b) { return a + b; };
+
+// Return number increased by 1.
+//
+// stream.util.inc(Number) -> Number
+stream.util.inc = function inc(a) { return a + 1; };
+
+// Is number even?
+//
+// stream.util.isEven(Number) -> Boolean
+stream.util.isEven = function isEven(a) { return !(a % 2); }
+
+// Is number odd?
+//
+// stream.util.isOdd(Number) -> Boolean
+stream.util.isOdd = function isOdd(a) { return !!(a % 2); }
+
+//
+// Debugging utilities
+//
+
+// Log arguments using console.log
+//
+// stream.util.log(Object arguments...) -> undefined
+//
+// Like `console.log`, but can be passed around without context.
+stream.util.log = console.log.bind(console);
+
+// Return a logger function that prefixes its arguments with `prefix`.
+//
+// stream.util.log(String prefix) -> (function(Object arguments) -> undefined)
+//
+// Example:
+//
+// logPrefix('[module x]')('hello', 1, 2, 3);
+// // -> [module x] hello 1 2 3
+stream.util.logPrefix = function logPrefix(prefix) {
+	return function() {
+		var args = toArray(arguments);
+		args.unshift(prefix);
+		console.log.apply(console, args);
+	};
+};
+
+
+
+
 
 //
 // Utilities used by Transaction
@@ -577,15 +755,14 @@ Transaction.prototype.commit = function() {
 		}
 	}
 
-	var nodesToUpdate = updateOrder(updatedStreamsOrdered);
-	// TODO vocabulary! stream or node! or what?
+	var streamsToUpdate = updateOrder(updatedStreamsOrdered);
 	
-	nodesToUpdate.forEach(function(s) {
-		s.f();
+	streamsToUpdate.forEach(function(s) {
+		s.updater.apply(s, s.parents);
 	});
 
 	// I wonder if these could be done in the same .forEach()
-	nodesToUpdate.forEach(function(s) {
+	streamsToUpdate.forEach(function(s) {
 		if (hasNewValue(s)) {
 			s.value = s.newValue;
 			delete s.newValue;

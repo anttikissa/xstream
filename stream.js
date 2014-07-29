@@ -47,6 +47,15 @@ function Stream(initial) {
 	}
 };
 
+// Set the initial value of a stream to a given value 'silently',
+// without broadcasting it.
+//
+// Return this.
+Stream.prototype.withInitialValue = function withInitialValue(value) {
+	this.value = value;
+	return this;
+}
+
 // Tell my listeners that my value has been updated.
 Stream.prototype.broadcast = function broadcast() {
 	for (var i = 0, len = this.listeners.length; i < len; i++) {
@@ -155,11 +164,9 @@ function reduceUpdater(parent) {
 // s1: 1 1 2 2  5  6  6
 // s2: 1 2 4 6 11 17 23
 //
-// TODO example with initial`
+// TODO example with `initial`
 Stream.prototype.reduce = function reduce(f, initial) {
-	var result = stream();
-	result.value = initial;
-	return stream.link(this, result, reduceUpdater, f);
+	return stream.link(this, stream().withInitialValue(initial), reduceUpdater, f);
 };
 
 // Collect all values of a stream into an array
