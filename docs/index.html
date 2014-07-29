@@ -1,0 +1,83 @@
+<!doctype html>
+<meta charset=utf-8>
+<title>Streams</title>
+<style>
+	html {
+		background: #eee;
+	}
+	body {
+		background: #fff;
+		font-family: Georgia;
+		font-size: 16px;
+		line-height: 20px;
+		width: 800px;
+		margin: 0 auto;
+		padding: 1px 1rem;
+	}
+
+	* {
+		margin: 0;
+	}
+
+	pre, code {
+		font-family: 'Source Code Pro', Consolas, Monaco, Courier;
+		font-size: 15px;
+		background: #222;
+		color: #eee;
+		font-weight: 200;
+	}
+
+	pre.code {
+		margin: 1rem -1rem;
+		padding: 1rem;
+	}
+
+	code {
+		padding: 2px;
+	}
+
+	p, ul, ol, h1, h2, h3, h4, h5, h6, blockquote {
+		margin: 1rem 0;
+		font-size: 1rem;
+	}
+
+	ul, ol, blockquote {
+		margin: 1rem 2rem;
+		padding: 0;
+	}
+
+	li + li {
+	}
+</style>
+<h1>Introduction</h1>
+<blockquote><p>&quot;It is better to have 100 functions operate on one data structure than
+10 functions on 10 data structures.&quot; —Alan Perlis
+</blockquote>
+<p>This library is about streams.
+<p>A stream has two interesting properties:
+<ul>
+<li>It has a <i>a current value</i> (which may be <code>undefined</code>)
+<li>It <i>broadcasts</i> its value when it&#39;s updated
+</ul>
+<p>That&#39;s it.  Mostly.
+<h1>Errors, ends, and broken things</h1>
+<p>In the real world, a stream of values is not always enough.  Sometimes
+<ul>
+<li>streams <i>end</i>, and we want to react when it happens
+<li>streams have <i>errors</i>, and we&#39;re interested in them as well
+</ul>
+<p>So...
+<h1>Transactions</h1>
+<p>As we&#39;ve seen, transactions are what make streams tick.
+<p>Quite literally so, as the function <code>stream.tick()</code> is what is used to complete a
+transaction.
+<p>TODO this is fiction still
+<pre class=code>var s = stream();
+s.set(123);
+s.forEach(function(value) { console.log(value); });
+stream.tick();
+// -&gt; 123
+s.set(234);
+stream.tick();
+// -&gt; 234</pre>
+<footer></footer>

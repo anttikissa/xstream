@@ -1,0 +1,20 @@
+#!/bin/bash
+
+cd $(dirname $0)
+
+PRETEXT=../node_modules/.bin/pretext
+
+TMPTARGET=/tmp/index-$RANDOM.html
+TARGET=index.html
+
+cat pre.html > $TMPTARGET
+
+$PRETEXT 0-intro.md >> $TMPTARGET
+$PRETEXT 1-errors-ends.md >> $TMPTARGET
+$PRETEXT 2-transactions.md >> $TMPTARGET
+
+cat post.html >> $TMPTARGET
+
+mv $TMPTARGET $TARGET
+ls -l $TARGET
+
