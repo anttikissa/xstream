@@ -450,6 +450,15 @@ stream.combine = function combine() {
 	return stream.depends.apply(null, args);
 }
 
+var merge2Updater = function() {
+	if (hasNewValue(this.parents[0])) {
+		this.newValue = this.parents[0].newValue;
+	}
+	if (hasNewValue(this.parents[1])) {
+		this.newValue = this.parents[1].newValue;
+	}
+}
+
 var mergeUpdater = function() {
 	for (var i = 0, len = this.parents.length; i < len; i++) {
 		if (hasNewValue(this.parents[i])) {
@@ -458,12 +467,12 @@ var mergeUpdater = function() {
 	}
 }
 
-
 // stream.merge(Stream streams...) -> Stream
 // TODO document
 stream.merge = function merge() {
 	var parents = toArray(arguments);
-	return stream.link(parents, stream(), mergeUpdater);
+	var updater = parents.length === 2 ? merge2Updater : mergeUpdater;
+	return stream.link(parents, stream(), updater);
 }
 
 // Take n streams and make a stream of arrays from them that is updated
