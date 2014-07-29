@@ -78,8 +78,8 @@ Stream.prototype.set = function set(value) {
 	return this.update(value);
 };
 
-function mapUpdater() {
-	this.newValue = this.f(this.parents[0].newValue);
+function mapUpdater(parent) {
+	this.newValue = this.f(parent.newValue);
 }
 
 // Returns a stream whose value is updated with `f(x)` whenever this
@@ -95,17 +95,11 @@ function mapUpdater() {
 // function or leave it as is?
 Stream.prototype.map = function map(f) {
 	return stream.link(this, stream(), mapUpdater, f);
-//	var parent = this;
-//	return stream.depends(parent, stream(), function() {
-//		this.newValue = f(parent.newValue);
-//	});
-	// .endWhen(this); // won't work!
-	// TODO stream.ends() can just be rewired from parent.ends().map(f)
 };
 
-function filterUpdater() {
-	if (this.f(this.parents[0].newValue)) {
-		this.newValue = this.parents[0].newValue;
+function filterUpdater(parent) {
+	if (this.f(parent.newValue)) {
+		this.newValue = parent.newValue;
 	}
 }
 
@@ -120,9 +114,9 @@ Stream.prototype.filter = function filter(f) {
 	return stream.link(this, stream(), filterUpdater, f);
 };
 
-function uniqUpdater() {
-	if (this.value !== this.parents[0].newValue) {
-		this.newValue = this.parents[0].newValue;
+function uniqUpdater(parent) {
+	if (this.value !== parent.newValue) {
+		this.newValue = parent.newValue;
 	}
 }
 
@@ -450,19 +444,20 @@ stream.combine = function combine() {
 	return stream.depends.apply(null, args);
 }
 
-var merge2Updater = function() {
-	if (hasNewValue(this.parents[0])) {
-		this.newValue = this.parents[0].newValue;
+function merge2Updater(firstParent, secondParent) {
+	if (hasNewValue(firstParent)) {
+		this.newValue = firstParent.newValue;
 	}
-	if (hasNewValue(this.parents[1])) {
-		this.newValue = this.parents[1].newValue;
+	if (hasNewValue(secondParent)) {
+		this.newValue = secondParent.newValue;
 	}
 }
 
-var mergeUpdater = function() {
-	for (var i = 0, len = this.parents.length; i < len; i++) {
-		if (hasNewValue(this.parents[i])) {
-			this.newValue = this.parents[i].newValue;
+function mergeUpdater() {
+	// arguments === this.parents
+	for (var i = 0, len = arguments.length; i < len; i++) {
+		if (hasNewValue(arguments[i])) {
+			this.newValue = arguments[i].newValue;
 		}
 	}
 }
