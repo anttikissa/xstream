@@ -31,11 +31,17 @@ That's it.  Mostly.
 ## A sketch
 
 ### Simple dependencies: .map, .filter, .combine
+
 ### merge
+
 ### Maybe .reduce too
+
 ### stream.from() -- kitchen sink
+
 ### rewire
+
 ### what does `tick()` do?
+
 ### Some nice examples (fibonacci? snake?)
 
 Maybe to its own chapter:
