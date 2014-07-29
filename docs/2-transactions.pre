@@ -1,0 +1,50 @@
+## Transactions
+
+As we've seen, transactions are what make streams tick.
+
+Quite literally so, as the function `stream.tick()` is what is used to complete a
+transaction.
+
+TODO this is fiction still
+
+	var s = stream();
+	s.set(123);
+	s.forEach(function(value) { console.log(value); });
+	stream.tick();
+	// -> 123
+	s.set(234);
+	stream.tick();
+	// -> 234
+
+### Open issues
+
+How should we manage time?
+
+E.g. we want things to happen 'on the next tick'.
+
+	var s = stream.from(1, 2, 3, 4, 5);
+	var s2 = d.delayOneTick();
+	var s3 = stream.combine(s, s2, stream.plus);
+
+	// s    1    2   3   4   5
+	// s2        1   2   3   4   5
+	// s3   NaN  3   5   7   9   10
+
+We also want combineWhenAll or something to filter out `undefined`s.
+
+How to implement ticks, then?
+
+	stream.prototype.delayOneTick = function() {
+		var result = stream();
+		this.forEach(function(value) {
+			result.update(value);
+		});
+	}
+
+`.forEach` is always called at the end of the transaction and hence is
+guaranteed to provide consistent results for all `.forEach()` listeners
+that are called within a transaction.
+
+Therefore, `stream.fromArray([1,2,3,4])` and friends should use
+`.forEach` as well.
+

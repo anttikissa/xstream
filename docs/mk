@@ -9,9 +9,9 @@ TARGET=index.html
 
 cat pre.html > $TMPTARGET
 
-$PRETEXT 0-intro.md >> $TMPTARGET
-$PRETEXT 1-errors-ends.md >> $TMPTARGET
-$PRETEXT 2-transactions.md >> $TMPTARGET
+$PRETEXT 0-intro.pre >> $TMPTARGET
+$PRETEXT 1-errors-ends.pre >> $TMPTARGET
+$PRETEXT 2-transactions.pre >> $TMPTARGET
 
 cat post.html >> $TMPTARGET
 

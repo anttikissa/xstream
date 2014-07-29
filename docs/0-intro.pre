@@ -1,4 +1,4 @@
-# Introduction
+## Introduction
 
 > "It is better to have 100 functions operate on one data structure than
 > 10 functions on 10 data structures." —Alan Perlis
@@ -10,5 +10,15 @@ A stream has two interesting properties:
 - It has a /a current value/ (which may be `undefined`)
 - It /broadcasts/ its value when it's updated
 
+An example of using streams:
+
+	var s1 = stream();
+	var s2 = stream();
+	var s3 = stream.combine(s1, s2, function(a, b) { return a + b });
+	s3.forEach(value
+
+	s1. 
+
 That's it.  Mostly.
+
 
