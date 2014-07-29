@@ -735,7 +735,7 @@ Transaction.prototype.commit = function() {
 	var streamsToUpdate = updateOrder(updatedStreamsOrdered);
 	
 	streamsToUpdate.forEach(function(s) {
-		s.updater();
+		s.updater.apply(s, s.parents);
 	});
 
 	// I wonder if these could be done in the same .forEach()
