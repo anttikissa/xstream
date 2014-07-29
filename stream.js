@@ -90,7 +90,7 @@ Stream.prototype.set = function set(value) {
 // function or leave it as is?
 Stream.prototype.map = function map(f) {
 	var parent = this;
-	return depends(parent, stream(), function() {
+	return stream.depends(parent, stream(), function() {
 		this.newValue = f(parent.newValue);
 	}).endWhen(this); // won't work!
 	// TODO stream.ends() can just be rewired from parent.ends().map(f)
@@ -105,7 +105,7 @@ Stream.prototype.map = function map(f) {
 // s2: 1 1     5
 Stream.prototype.filter = function filter(f) {
 	var parent = this;
-	return depends(this, stream(), function() {
+	return stream.depends(this, stream(), function() {
 		if (f(parent.newValue)) {
 			this.newValue = parent.newValue;
 		}
@@ -121,7 +121,7 @@ Stream.prototype.filter = function filter(f) {
 // s2: 1   2   5 6
 Stream.prototype.uniq = function uniq() {
 	var parent = this;
-	return depends(this, stream(), function() {
+	return stream.depends(this, stream(), function() {
 		if (this.value !== parent.newValue) {
 			this.newValue = parent.newValue;
 		}
@@ -146,7 +146,7 @@ Stream.prototype.uniq = function uniq() {
 // TODO example with initial`
 Stream.prototype.reduce = function reduce(f, initial) {
 	var parent = this;
-	return depends(this, stream(), function() {
+	return stream.depends(this, stream(), function() {
 		if (this.value !== undefined) {
 			this.newValue = f(this.value, parent.newValue);
 		} else {
@@ -179,7 +179,7 @@ Stream.prototype.rewire = function rewire(newParent) {
 		parent.children.splice(parent.children.indexOf(this));
 	}
 	this.parents = [];
-	return depends(newParent, this, function() {
+	return stream.depends(newParent, this, function() {
 		this.newValue = newParent.newValue;
 	});
 };
@@ -246,7 +246,7 @@ Stream.prototype.end = function end() {
 // TODO test that mapped/reduced streams end properly
 Stream.prototype.endWhen = function endWhen(parent) {
 	var that = this;
-	depends(parent.ends(), this.ends(), function() {
+	stream.depends(parent.ends(), this.ends(), function() {
 		this.newValue = parent.value;
 	});
 	return this;
@@ -336,11 +336,9 @@ stream.fromString = function fromString(string) {
 	return stream.fromArray(string.split(''));
 };
 
-// TODO consider making `depends` a member of `stream`.
-//
 // In fact, it's a bit similar to `rewire`. Can they be merged?
 
-// depends: (Stream parents..., Stream child, f) -> Stream
+// stream.depends: (Stream parents..., Stream child, f) -> Stream
 //
 // Declare value of `child` to depend on each of `parents`.
 //
@@ -349,7 +347,7 @@ stream.fromString = function fromString(string) {
 // been updated during this transaction. `f` should set `this.newValue`
 // if it wants to update the child.
 //
-function depends() {
+stream.depends = function depends() {
 	// TODO should check that child doesn't have active .set()s in the
 	// current commit queue, or figure out another solution for that
 	//
@@ -393,7 +391,7 @@ stream.combine = function combine() {
 		this.newValue = f.apply(null, parents.map(mostRecentValue));
 	}]);
 
-	return depends.apply(null, args);
+	return stream.depends.apply(null, args);
 }
 
 // merge: (Stream streams...) -> Stream
@@ -411,30 +409,8 @@ stream.merge = function merge() {
 		}
 	}]);
 
-	return depends.apply(null, args);
+	return stream.depends.apply(null, args);
 }
-
-//
-// stream.util is a collection of useful functions.
-//
-stream.util = {};
-
-// Add two numbers.
-//
-// plus(Number, Number) -> Number
-//
-// (Or you can use it for strings, too, if you're creative.)
-stream.util.plus = function plus(a, b) { return a + b; };
-
-// Return number increased by 1.
-//
-// inc(Number) -> Number
-stream.util.inc = function inc(a) { return a + 1; };
-
-// TODO more utils
-
-
-
 // Take n streams and make a stream of arrays from them that is updated
 // whenever one of the source streams is updated.
 //
@@ -454,6 +430,56 @@ stream.zip = function() {
 	args.push(Array);
 	return stream.combine.apply(null, args);
 };
+
+
+//
+// A collection of useful functions.
+//
+
+stream.util = {};
+
+// Add two numbers.
+//
+// plus(Number, Number) -> Number
+//
+// (Or you can use it for strings, too, if you're creative.)
+stream.util.plus = function plus(a, b) { return a + b; };
+
+// Return number increased by 1.
+//
+// inc(Number) -> Number
+stream.util.inc = function inc(a) { return a + 1; };
+
+//
+// Debugging utilities
+//
+
+// Log arguments using console.log
+//
+// log(Object arguments...) -> undefined
+//
+// Like `console.log`, but can be passed around without context.
+stream.util.log = console.log.bind(console);
+
+// Return a logger function that prefixes its arguments with `prefix`.
+//
+// log(String prefix) -> (function(Object arguments) -> undefined)
+//
+// Example:
+//
+// logPrefix('[module x]')('hello', 1, 2, 3);
+// // -> [module x] hello 1 2 3
+stream.util.logPrefix = function logPrefix(prefix) {
+	return function() {
+		var args = toArray(arguments);
+		args.unshift(prefix);
+		console.log.apply(console, args);
+	};
+};
+
+
+
+
 
 //
 // Utilities used by Transaction
