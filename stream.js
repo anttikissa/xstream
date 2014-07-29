@@ -34,14 +34,16 @@ function access(selector) {
 }
 
 function Stream(initial) {
-	this.listeners = []; // 'external' listeners
-	this.parents = []; // my dependencies
-	this.children = []; // 'internal' listeners
-	this.value = undefined;
 	this.id = stream.nextId++;
+	this.parents = []; // streams I depend on
+	this.children = []; // streams that depend on me
+	this.listeners = []; // listeners that get my value when it updates
+	this.value = undefined;
+	this.updater = function() {};
+	this.f = null;
 
 	if (initial !== undefined) {
-		this.set(initial);
+		this.update(initial);
 	}
 };
 
@@ -76,6 +78,9 @@ Stream.prototype.set = function set(value) {
 	return this.update(value);
 };
 
+function mapUpdater() {
+	this.newValue = this.f(this.parents[0].newValue);
+}
 
 // Returns a stream whose value is updated with `f(x)` whenever this
 // stream's value is updated with `x`.
@@ -89,10 +94,12 @@ Stream.prototype.set = function set(value) {
 // Should we implement it in terms of a more complex and generalized
 // function or leave it as is?
 Stream.prototype.map = function map(f) {
-	var parent = this;
-	return stream.depends(parent, stream(), function() {
-		this.newValue = f(parent.newValue);
-	}).endWhen(this); // won't work!
+	return stream.link(this, stream(), mapUpdater, f);
+//	var parent = this;
+//	return stream.depends(parent, stream(), function() {
+//		this.newValue = f(parent.newValue);
+//	});
+	// .endWhen(this); // won't work!
 	// TODO stream.ends() can just be rewired from parent.ends().map(f)
 };
 
@@ -342,6 +349,47 @@ stream.fromString = function fromString(string) {
 	return stream.fromArray(string.split(''));
 };
 
+// Link stream to one or more parents.
+//
+// stream.link(
+//     Stream parent, Stream child,
+//     Function updater, Function f = null) -> Stream
+//
+// stream.link(
+//     [Stream] parents, Stream child,
+//     Function updater, Function f = null) -> Stream
+//
+// Establish a dependency relationship a between a stream (`child`) and
+// one or more dependencies (`parents`).
+//
+// Set child.parents to parents, child.updater to updater, and child.f
+// to f.
+//
+// Whenever a parent is updated within a transaction, `updater` will be
+// called with `child` as `this`.  `updater` will only be called once
+// per transaction, and only after all of child's parents have been
+// updated.
+//
+// It should set `this.newValue` if it wants to update `child`'s value,
+// and otherwise do nothing.  The `newValue` attribute of parent streams
+// has been set for those parents that were updated during this tick. 
+//
+// Return child.
+stream.link = function link(parents, child, updater, f) {
+	if (parents instanceof Stream) {
+		parents = [parents];
+	}
+
+	for (var i = 0, len = parents.length; i < len; i++) {
+		parents[i].children.push(child);
+	}
+	child.parents = parents;
+	child.updater = updater;
+	child.f = f || null;
+
+	return child;
+};
+
 // stream.depends(Stream parents..., Stream child, f) -> Stream
 //
 // Declare value of `child` to depend on each of `parents`.
@@ -352,6 +400,7 @@ stream.fromString = function fromString(string) {
 // if it wants to update the child.
 //
 stream.depends = function depends() {
+	log('depends');
 	// TODO should check that child doesn't have active .set()s in the
 	// current commit queue, or figure out another solution for that
 	//
@@ -442,6 +491,11 @@ stream.zip = function() {
 //
 
 stream.util = {};
+
+// Identity function
+//
+// stream.util.identity(Object) -> Object
+stream.util.identity = function identity(a) { return a; };
 
 // Add two numbers.
 //
@@ -658,15 +712,14 @@ Transaction.prototype.commit = function() {
 		}
 	}
 
-	var nodesToUpdate = updateOrder(updatedStreamsOrdered);
-	// TODO vocabulary! stream or node! or what?
+	var streamsToUpdate = updateOrder(updatedStreamsOrdered);
 	
-	nodesToUpdate.forEach(function(s) {
-		s.f();
+	streamsToUpdate.forEach(function(s) {
+		s.updater();
 	});
 
 	// I wonder if these could be done in the same .forEach()
-	nodesToUpdate.forEach(function(s) {
+	streamsToUpdate.forEach(function(s) {
 		if (hasNewValue(s)) {
 			s.value = s.newValue;
 			delete s.newValue;
