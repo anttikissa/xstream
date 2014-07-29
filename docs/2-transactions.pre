@@ -1,5 +1,9 @@
 ## Transactions
 
+> "And I didn't have any idea what to do but I knew I needed a click so
+> we put a click on the 24 track which then was synced to the moog
+> modular." —Giorgio Moroder
+
 As we've seen, transactions are what make streams tick.
 
 Quite literally so, as the function `stream.tick()` is what is used to complete a
