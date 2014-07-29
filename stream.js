@@ -202,6 +202,7 @@ Stream.prototype.toString = function toString() {
 		show(name, '[' + streams.map(function(s) { return 's' + s.id; }).join(', ') + ']');
 	}
 	show('value', this.value);
+	show('newValue', this.newValue);
 	showStreams('parents', this.parents);
 	showStreams('children', this.children);
 	return result + ']';
@@ -431,17 +432,35 @@ function mostRecentValue(s) {
 	return s.value;
 }
 
+function combine2Updater(firstParent, secondParent) {
+	this.newValue = this.f(
+		mostRecentValue(firstParent),
+		mostRecentValue(secondParent));
+}
+
+function combine3Updater(firstParent, secondParent, thirdParent) {
+	console.log(arguments);
+	this.newValue = this.f(
+		mostRecentValue(firstParent),
+		mostRecentValue(secondParent),
+		mostRecentValue(thirdParent));
+}
+
+function combineUpdater() {
+	var values = this.parents.map(mostRecentValue);
+	this.newValue = this.f.apply(null, values);
+};
+
 // stream.combine(Stream streams..., f) -> Stream
 // TODO document
 stream.combine = function combine() {
 	var parents = toArray(arguments);
 	var f = parents.pop();
+	var updater = parents.length === 2 ? combine2Updater :
+		parents.length === 3 ? combine3Updater :
+		combineUpdater;
 
-	var args = parents.concat([stream(), function() {
-		this.newValue = f.apply(null, parents.map(mostRecentValue));
-	}]);
-
-	return stream.depends.apply(null, args);
+	return stream.link(parents, stream(), updater, f);
 }
 
 function merge2Updater(firstParent, secondParent) {
