@@ -282,11 +282,11 @@ stream.tick = function tick() {
 	stream.transaction().commit();
 }
 
-// Make a stream out of anything.
+// Make a stream out of pretty much anything.
 //
-// stream.from: PrettyMuchAnything... -> Stream
-//
-// If `arguments` is a set 
+// stream.from(String) -> Stream
+// stream.from([Object]) -> Stream
+// stream.from(Object...) -> Stream
 stream.from = function from(first) {
 	if (typeof first === 'string') {
 		return stream.fromString(first);
@@ -300,6 +300,8 @@ stream.from = function from(first) {
 }
 
 // Make a stream from an array.
+//
+// stream.fromArray([Object]) -> Stream
 //
 // Set the the first value in the current transaction and the following
 // values in following transactions.
@@ -321,7 +323,9 @@ stream.fromArray = function fromArray(array) {
 	return result;
 };
 
-// Make a stream from a set of values.
+// Make a stream from a list of values.
+//
+// stream.fromArray(Object...) -> Stream
 //
 // stream.fromValues(1,2,3) is equal to stream.fromArray([1,2,3]).
 stream.fromValues = function fromValues() {
@@ -331,14 +335,14 @@ stream.fromValues = function fromValues() {
 
 // Make a stream from a string's characters.
 //
+// stream.fromString(String) -> Stream
+//
 // stream.fromString('abc') is equal to stream.fromArray('a', 'b', 'c').
 stream.fromString = function fromString(string) {
 	return stream.fromArray(string.split(''));
 };
 
-// In fact, it's a bit similar to `rewire`. Can they be merged?
-
-// stream.depends: (Stream parents..., Stream child, f) -> Stream
+// stream.depends(Stream parents..., Stream child, f) -> Stream
 //
 // Declare value of `child` to depend on each of `parents`.
 //
@@ -381,7 +385,7 @@ function mostRecentValue(s) {
 	return s.value;
 }
 
-// combine: (Stream streams..., f) -> Stream
+// stream.combine(Stream streams..., f) -> Stream
 // TODO document
 stream.combine = function combine() {
 	var parents = toArray(arguments);
@@ -394,7 +398,7 @@ stream.combine = function combine() {
 	return stream.depends.apply(null, args);
 }
 
-// merge: (Stream streams...) -> Stream
+// stream.merge(Stream streams...) -> Stream
 // TODO document
 stream.merge = function merge() {
 	var parents = toArray(arguments);
@@ -411,10 +415,11 @@ stream.merge = function merge() {
 
 	return stream.depends.apply(null, args);
 }
+
 // Take n streams and make a stream of arrays from them that is updated
 // whenever one of the source streams is updated.
 //
-// stream.zip(stream1, stream2, ...)
+// stream.zip(stream1, stream2, ...) -> Stream
 //
 // Example:
 //
@@ -440,14 +445,14 @@ stream.util = {};
 
 // Add two numbers.
 //
-// plus(Number, Number) -> Number
+// stream.util.plus(Number, Number) -> Number
 //
 // (Or you can use it for strings, too, if you're creative.)
 stream.util.plus = function plus(a, b) { return a + b; };
 
 // Return number increased by 1.
 //
-// inc(Number) -> Number
+// stream.util.inc(Number) -> Number
 stream.util.inc = function inc(a) { return a + 1; };
 
 //
@@ -456,14 +461,14 @@ stream.util.inc = function inc(a) { return a + 1; };
 
 // Log arguments using console.log
 //
-// log(Object arguments...) -> undefined
+// stream.util.log(Object arguments...) -> undefined
 //
 // Like `console.log`, but can be passed around without context.
 stream.util.log = console.log.bind(console);
 
 // Return a logger function that prefixes its arguments with `prefix`.
 //
-// log(String prefix) -> (function(Object arguments) -> undefined)
+// stream.util.log(String prefix) -> (function(Object arguments) -> undefined)
 //
 // Example:
 //
