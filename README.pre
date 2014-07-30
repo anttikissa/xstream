@@ -326,6 +326,60 @@ You can convert an array into a stream:
 	// later:
 	// -> 1; 2; 3; 4; 5
 
+Or make a stream of numbers:
+
+	var numbers = stream.fromRange(1, 10);
+	numbers.forEach(log);
+	// later:
+	// -> 1; 2; 3; 4; 5; 6; 7; 8; 9; 10
+
+You can give a step to be used with the range:
+
+	var numbers = stream.fromRange(0, 50, 10);
+	numbers.forEach(log);
+	// later:
+	// -> 0; 10; 20; 30; 40; 50
+
+Infinite ranges are ok, although for the example to work we have to call
+`end()` to stop the iteration when we like. We'll talk more about .end()
+soon.
+
+	var numbers = stream.fromRange(0);
+	numbers.forEach(function(value) {
+		console.log(value);
+		if (value == 5) {
+			this.end();
+		}
+	});
+	// later:
+	// -> 0; 1; 2; 3; 4; 5
+	// TODO make mktest do this automatically:
+	// no effect
+
+To create an infinite range with a step, just use `Infinity` as the end value:
+
+	var oddNumbers = stream.fromRange(1, Infinity, 2);
+	oddNumbers.forEach(function(value) {
+		console.log(value);
+		if (value == 5) {
+			this.end();
+		}
+	});
+	// later:
+	// -> 1; 3; 5
+
+You can .end an array stream, too:
+
+	var numbers = stream.fromArray([1,2,3,4,5,6,7,8,9,10]);
+	numbers.forEach(function(value) {
+		console.log(value);
+		if (value == 5) {
+			this.end();
+		}
+	});
+	// later:
+	// -> 1; 2; 3; 4; 5
+
 // TODO eventually add .pause(), .play(), .rewind(), .interval(),
 // maybe .delay() to these kinds of streams, give them a name
 // 'timed stream', 'buffered stream', 'automatic stream', 'generator stream',
@@ -911,11 +965,13 @@ TODO
 - Create a 'make' style build tool
 - Convert mktest into using streams
 - Classic autocomplete example
-
 - http://elm-lang.org/ has the time traveling thing
 - form with username & two password fields
   - check that passwords match
   - that username/email is not taken
   - etc.
   - maybe validate email too
+- Example: MMO, stream that monitors network latency and fades the
+  screen when it is too big
+- Physics simulator
 
