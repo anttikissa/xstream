@@ -26,6 +26,44 @@ An example of using streams:
 
 That's it.  Mostly.
 
+### Streams: three perspectives
+
+You can view streams from different perspectives.
+
+1. Streams as data-flow graphs
+
+Streams form a network of nodes, where some nodes act as sources and
+others derive values from them.  The focus is on the /values/ of the
+nodes.  Communication happens whenever a value somewhere changes, and
+the rest of the nodes receive their right values automatically and
+atomically.
+
+Signals in FRP (?); Properties of Bacon.js; some kind of Observables in
+RxJS; Likely mostly `map`, `combine`, and the ilk (not much else?)
+
+2. Streams as event sources
+
+We're interested in what happens when streams update; in other words,
+/update events/.  Sometimes we want some data with the events (for
+example, coordinates associated with a mouse click), sometimes we're
+just interested in the fact that the event happened (for example, a
+"Dismiss" button was pressed).
+
+There is still a graph, as event streams may be filtered, mapped,
+collected, etc. into other meaningful streams.  But the operations that
+are performed are likely different.  `merge`, `filter`, `sampledBy`,
+etc. TODO complete this analysis after actually writing something.
+
+3. Streams as data structures
+
+In this views, streams are treated like a kind of asynchronous arrays
+whose values are spread out in time.
+The fact that streams can be updated is just an implementation artifact
+to... (or:) Ticks/transactions are used not for synchronizing data
+updates but as a means of iteration.
+
+TODO talk about ticks.
+
 
 
 ## A sketch

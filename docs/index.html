@@ -72,6 +72,39 @@ s3.forEach(function(value) {
 stream.tick();
 // -&gt; 3</pre>
 <p>That&#39;s it.  Mostly.
+<h3>Streams: three perspectives</h3>
+<p>You can view streams from different perspectives.
+<ol>
+<li>Streams as data-flow graphs
+</ol>
+<p>Streams form a network of nodes, where some nodes act as sources and
+others derive values from them.  The focus is on the <i>values</i> of the
+nodes.  Communication happens whenever a value somewhere changes, and
+the rest of the nodes receive their right values automatically and
+atomically.
+<p>Signals in FRP (?); Properties of Bacon.js; some kind of Observables in
+RxJS; Likely mostly <code>map</code>, <code>combine</code>, and the ilk (not much else?)
+<ol start=2>
+<li>Streams as event sources
+</ol>
+<p>We&#39;re interested in what happens when streams update; in other words,
+<i>update events</i>.  Sometimes we want some data with the events (for
+example, coordinates associated with a mouse click), sometimes we&#39;re
+just interested in the fact that the event happened (for example, a
+&quot;Dismiss&quot; button was pressed).
+<p>There is still a graph, as event streams may be filtered, mapped,
+collected, etc. into other meaningful streams.  But the operations that
+are performed are likely different.  <code>merge</code>, <code>filter</code>, <code>sampledBy</code>,
+etc. TODO complete this analysis after actually writing something.
+<ol start=3>
+<li>Streams as data structures
+</ol>
+<p>In this views, streams are treated like a kind of asynchronous arrays
+whose values are spread out in time.
+The fact that streams can be updated is just an implementation artifact
+to... (or:) Ticks/transactions are used not for synchronizing data
+updates but as a means of iteration.
+<p>TODO talk about ticks.
 <h2>A sketch</h2>
 <h3>Simple dependencies: .map, .filter, .combine</h3>
 <h3>merge</h3>

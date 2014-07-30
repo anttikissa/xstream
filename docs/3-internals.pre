@@ -13,7 +13,42 @@ This chapter attempts to answers two questions:
 
 ### Design
 
-What principles guided the design of the internals
+What principles guided the design of the internals?
+
+Debuggability
+
+Readability
+
+Power to the people (the tools used to implement primitives such as
+`map` and `filter' should be given to any user of the library)
+
+Managing complexity: this library attempts to do many different things
+at once, so it's on an inevitable path towards death by complexity.  How
+to manage complexity?
+
+Attempts to tackle complexity by itself are doomed to fail.  The only
+possible solution is to cut its roots one by one.  You can never beat
+complexity, but you can find spots where you can coexist with it.
+
+- solving a simple problem at a time
+- figure out a locally applicable solution that works reasonably well
+within the specified constraints.  
+- more complex behavior may emerge out of these simple solutions (and comes without warranty)
+
+Example? "Atomic value propagation" is one problem.
+
+"Iterating over streams such that streams are kept synchronized" is
+another.
+
+"That .end() should work in reasonable cases" is a problem.
+
+
+
+
+, user should be able to implement any of the
+primitives by themselves
+
+Design
 
 ### How to read the source code
 
