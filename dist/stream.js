@@ -56,16 +56,18 @@ function Stream(initial) {
 Stream.prototype.withInitialValue = function withInitialValue(value) {
 	this.value = value;
 	return this;
-}
+};
 
 // Tell my listeners that my value has been updated.
 Stream.prototype.broadcast = function broadcast() {
 	for (var i = 0, len = this.listeners.length; i < len; i++) {
-		this.listeners[i](this.value);
+		this.listeners[i].call(this, this.value);
 	}
 };
 
 // Call f whenever my value has been updated.
+// 
+// `this` will be set to the object.
 Stream.prototype.forEach = function forEach(f) {
 	this.listeners.push(f);
 	return this;
@@ -166,7 +168,7 @@ function reduceUpdater(parent) {
 // s1: 1 1 2 2  5  6  6
 // s2: 1 2 4 6 11 17 23
 //
-// TODO example with initial`
+// TODO example with `initial`
 Stream.prototype.reduce = function reduce(f, initial) {
 	return stream.link(this, stream().withInitialValue(initial), reduceUpdater, f);
 };
@@ -213,6 +215,7 @@ Stream.prototype.toString = function toString() {
 	}
 	show('value', this.value);
 	show('newValue', this.newValue);
+	show('state', JSON.stringify(this.state));
 	showStreams('parents', this.parents);
 	showStreams('children', this.children);
 	return result + ']';
@@ -230,6 +233,22 @@ Stream.prototype.commit = function commit() {
 	stream.transaction().commit();
 	return this;
 };
+
+// TODO there are more than one smells to this one
+// - name: it's not canceling the whole transaction, only the ops that
+// target this stream
+// - it's touching Transaction's internals directly
+// - still it's a valid way to .end() a stream that has transactions 
+// in the transaction queue
+// - maybe a cleaner way would be to mark them as .ended or something
+Stream.prototype.cancelTransactions = function cancelTransactions() {
+	var tx = stream.transaction();
+	var that = this;
+	tx.ops = tx.ops.filter(function(op) {
+		return op[0] !== that;
+	});
+};
+
 
 // Update function. For regular streams, this is a no-op.
 Stream.prototype.f = function fNoOp() {
@@ -255,20 +274,16 @@ Stream.prototype.end = function end() {
 		// TODO within a transaction?
 		this.endStream.set(this.value);
 	}
+
+	this.cancelTransactions();
+	// TODO make in a transaction
+//	this.listeners = [];
+//	do something with listeners, children/parents, etc.?
 };
 
-// This stream ends when s ends
-// TODO test that mapped/reduced streams end properly
-Stream.prototype.endWhen = function endWhen(parent) {
-	var that = this;
-	stream.depends(parent.ends(), this.ends(), function() {
-		this.newValue = parent.value;
-	});
-	return this;
-};
-
-// TODO endWhenOne, endWhenAll
+// TODO endWhen, endWhenOne, endWhenAll
 // for combine and merge, respectively
+// or are all just special cases?
 
 // Shorthand
 Stream.prototype.onEnd = function onEnd(f) {
@@ -290,6 +305,21 @@ stream.nextId = 1;
 // Get the current transaction or create one.
 stream.transaction = function transaction() {
 	return stream.tx || (stream.tx = new Transaction());
+};
+
+// TODO there are more than one smells to this one
+// - name: it's not canceling the whole transaction, only the ops that
+// target this stream
+// - it's touching Transaction's internals directly
+stream.prototype.cancelTransactions = function cancelTransactions() {
+	var tx = stream.transaction();
+	var that = this;
+	log('cancel', this);
+	log('trans', tx.ops);
+	tx.ops = tx.ops.filter(function(op) {
+		return op[0] !== that;
+	});
+	log('trans after', tx.ops);
 };
 
 // Commit the current transaction.
@@ -321,22 +351,45 @@ stream.from = function from(first) {
 // Set the the first value in the current transaction and the following
 // values in following transactions.
 stream.fromArray = function fromArray(array) {
-	// TODO ensure it's an array
-	// at least in debug build
 	var result = stream();
-	var update = function() {
-		if (array.length) {
-			result.set(array.shift());
+	result.rest = array.slice();
 
-			defer(update);
+	result.next = function next() {
+		if (this.rest.length) {
+			this.update(this.rest.shift());
 		} else {
-			result.end();
+			this.end();
+		}
+		return this;
+	}
+
+	result.next();
+
+	return result.forEach(result.next);
+};
+
+stream.fromRange = function fromRange(start, end, step) {
+	var result = stream();
+	result.state = {
+		current: start,
+		end: end || Infinity,
+		step: step || 1
+	};
+
+	result.next = function next() {
+		var state = this.state;
+		state.current += state.step;
+		if (state.current <= state.end) {
+			this.update(state.current);
+		} else {
+			this.end();
 		}
 	};
 
-	update();
-	return result;
-};
+	result.update(start);
+
+	return result.forEach(result.next);
+}
 
 // Make a stream from a list of values.
 //
