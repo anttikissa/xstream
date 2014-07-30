@@ -10,21 +10,13 @@
   .rewireDangerousShortcut().
 - onEnd() to work correctly (??? figure out the right semantics) for
   reduce() with an initial value and no derived values
+  (does it?)
 - reduce() could set .value to initialValue and just not broadcast it,
   now would that be silly?
 - do some renames: set -> update, talk about children and parents
   instead of 'dependencies' (maybe?), talk about linking and unlinking
   instead of depends()/rewire (maybe? rewire could do just unlink from
   current parents + link to new ones)
-- make `depends` actually use the same function that does that actual
-  updating, which is the same global function for `map`, `reduce`, etc
-  (maybe optimized / readabilized for map, combine2, combine3, merge2,
-  merge3, etc)
-- every stream to have .parents[] where it takes its parent values from
-- every stream to have .updater which is called when it needs to get
-  them
-- every stream to have .f that is the actual combinator given to .map(),
-  .reduce(), .combine() etc.
 - should prevent .set() from being called when the stream has parents
   (this messes with the topological sort, sets parensCount[id] to -1,
   should've seen that coming)
@@ -42,8 +34,6 @@
   and what's the difference between stream error and transaction error
 - Separate detailed tests out from README
 - Should f have `this` set to resulting node in case of map, combine, etc?
-- stream.from() that makes a stream out of anything, string -> chars,
-  array -> values, callback -> value, promise -> value
 
 .limit(min, max)
 //	[stream 1 2 3 4 5].limit(2, 4) -> [stream 2 3 4]
