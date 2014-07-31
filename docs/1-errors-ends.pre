@@ -5,5 +5,80 @@ In the real world, a stream of values is not always enough.  Sometimes
 - streams /end/, and we want to react when it happens
 - streams have /errors/, and we're interested in them as well
 
-So...
+A stream can update and end within the same tick, provided that the
+update happens first:
+
+	// TODO fixme by making the end a transaction op:
+	var s = stream();
+	s.onEnd(log);
+	s.update(1);
+	s.tick();
+	s.end();
+	s.tick();
+	// -> 1
+
+But you can't call `update` after the stream has ended:
+
+	return; // TODO test disabled
+	var s2 = stream();
+	s2.onEnd(log);
+	s2.update(1);
+	s2.end();
+	s2.update(2);
+	try {
+		s2.tick();
+	} catch (e) {
+		console.log(e);
+	}
+	// -> 'cannot update ended stream'
+
+Streams created by `map` and `reduce` end when the parent stream ends:
+
+	var s = stream();
+	var s2 = s.map(stream.util.inc);
+	var s3 = s2.reduce(stream.util.plus, 5);
+
+	s.onEnd(function(x) { console.log('s ends with', x); });
+	s2.onEnd(function(x) { console.log('s2 ends with', x); });
+	s3.onEnd(function(x) { console.log('s3 ends with', x); });
+	s.set(10);
+	s.tick(); // TODO remove when end is transaction op
+	s.end();
+	stream.tick();
+
+	// -> s ends with 10; s2 ends with 11; s3 ends with 16
+
+Errors are a bit similar to `ends`. They are intended for exceptional
+situations that need to be handled.  You trigger an exception by calling
+`s.error(error)`, and catch them by listening to stream `s.errors()` or
+by installing a `catch` handler: 
+
+	return; // TODO test disabled
+	s = stream.ajax('http://foobar.com/api/user/123.json');
+	s.onEnd(function(result) {
+		// ok, we have 'result'
+	});
+	s.errors().forEach(function(error) {
+		// called for all errors
+	});
+	s.catch(SomeException, function(error) {
+		// called for SomeExceptions
+	}).catch(SyntaxError, function(error) {
+		// called for SyntaxErrors
+	}).catch(function(error) {
+		// we have some other kind of error
+	});
+
+Finally, we have `finally`, which executes its argument when the stream
+either ends or encounters an error:
+
+	return; // TODO test disabled
+	s.finally(function() {
+		// do something;
+	});
+
+As an implementation artifact (because it's implemented as `finally =
+function(f) { this.ends().forEach(f); this.errors().forEach(f); }`), the
+`finally` handler is called with either the last value or the error, but
+you don't know which.
 

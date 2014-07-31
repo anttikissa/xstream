@@ -1,6 +1,30 @@
 
 # TODO
 
+- .onEnd() is not properly tested with derived streams
+- implement .ends() mapping for all primitives, find out if there's
+  common functionality to them and abstract away
+- could we map .ends() lazily? We don't really need to map all of the .ends() and
+  .errors() if nobody listens to them?  It would work so that the
+  .ends of the resulting stream should be set into a function that
+  actually does the thing.
+- should stream.link() do the mapping of .ends() and .errors() automatically?
+  but merge() should link ends differently than combine().
+  merge(): if all streams end, then end.
+  combine(): if any of streams end, then end.
+  or should combine() also end only when the last one ends?
+- should .range(0, Infinity) and other infinite streams stop updating
+  themselves if nobody has listened to them for a while? "if a stream
+  updates itself in a forest and nobody is listening, does it need to
+  update at all?"
+  (nobody listening === this.children.length == 0 and this.listeners
+  only contains my own listener)
+- test stuff like s.update(x); s.end(); within the same tick
+- AND s.update(x); s.end(); s.update(y); within the same tick
+- nightly implementation idea: s.end() should change .updater to function() {
+    throw new Error('stream ended');
+  }
+- BUT it .end must be a transaction op then, so implement that first.
 - crazy idea (or maybe, in hindsight, not so crazy): .rewire(), instead
   of adding a new node and making `this` depend on it, it could just go to
   `.children`() and replace itself with the stream that was given to it
@@ -73,7 +97,7 @@ TODO answer these eventually
   test coverage? No. Dependency handling? Not yet.)
 
 - Is it fast? (I have 10000 streams and with interdependencies, how
-  fast is commit()? No idea whatsoever.)
+  fast is tick()? No idea whatsoever.)
 
 - What's the memory footprint (Can I create 100000 streams with
   callbacks without crashing? How about a million? Hold on. We'll come
@@ -167,22 +191,29 @@ TODO make this current. In node, it uses `process.nextTick()`. In the
 browser, it uses a suitable mechanism (if starvation is a problem,
 invent some suitable workaround)
 
-You can call .commit() if you want to set a stream to its value
-immediately. A .commit() will update all streams that have a a `set` pending:
+You can call .tick() if you want to set a stream to its value
+immediately. A .tick() will update all streams that have a a `set` pending:
 
 	var s = stream();
 	var s2 = stream();
 
 	s.set(123);
 	s2.set(234);
-	s.commit();
+	s.tick();
 	console.log(s.value); // -> 123
-	// commit() also commits changes to other streams
+	// tick() also commits changes to other streams
 	console.log(s2.value); // -> 234
 
-(`s.commit()` is just a shorthand for `stream.transaction().commit()`.
-It exists just so you can initialize values more easily: 
-`s = stream(x).commit();`)
+`s.tick()` is just a shorthand for `stream.tick()` which is a shorthand for
+`stream.transaction().commit()`.  It's not particularly elegant (because
+`s.tick()`, in addition to updating `s`, also updates all other streams
+that have changes pending), but it's just there because I kept writing
+`s.tick()` instead of `stream.tick()` and it was easier to implement a
+shorthand than to unlearn a bad habit.  If you want to be pedantic, feel
+free to use `stream.tick()` instead.
+
+Also, with `s.tick()`, you can initialize values more easily: `s =
+stream(x).tick();`)
 
 Back to `set`. Like many other methods of `stream`, it returns the
 stream itself:
@@ -193,14 +224,14 @@ stream itself:
 	
 So you can write:
 
-	var s = stream().set(123).commit();
+	var s = stream().set(123).tick();
 	console.log(s.value);
 	// -> 123
 
 Or simply use the constructor `stream(value)`, which triggers
 `set(value)` (if `value` is defined):
 
-	var s = stream(123).commit();
+	var s = stream(123).tick();
 	console.log(s.value);
 	// -> 123
 
@@ -459,14 +490,14 @@ You can merge two streams:
 	var s2 = stream();
 	var both = stream.merge(s, s2).forEach(log);
 
-	s.set(1).commit();
+	s.set(1).tick();
 	// -> 1
-	s2.set(2).commit();
+	s2.set(2).tick();
 	// -> 2
 
 	s.set(3);
 	s2.set(4);
-	stream.transaction().commit();
+	stream.tick();
 	// Note that if both streams are updated within the same
 	// transaction, only the later value will be taken into
 	// account in the merged stream:
@@ -549,10 +580,10 @@ dependencies from the given stream:
 	// -> 2
 	var newSource = stream(2);
 	s.rewire(newSource);
-	stream.transaction().commit();
+	stream.tick();
 	// -> 2
-	oldSource.set(5).commit();
-	stream.transaction().commit();
+	oldSource.set(5).tick();
+	stream.tick();
 	// no effect
 
 Streams can end, which means that they no longer want to broadcast
@@ -574,7 +605,7 @@ end value will be same as the value set during the transaction:
 	s.ends().forEach(log);
 	s.set(1); // the order doesn't matter; or should it?
 	s.end();
-	s.commit();
+	s.tick();
 	// -> 1
 
 How about:
@@ -584,7 +615,7 @@ How about:
 	s.set(1);
 	s.end();
 	s.set(2);
-	s.commit();
+	s.tick();
 	// should probably get something like 'cannot .set() and ended
 	// stream'
 
@@ -793,7 +824,7 @@ A transaction is simply a set of modifications that will be performed on nodes:
 	//log(stream.tx); // -> [stream(undefined), 1]
 
 	// You can commit a transaction manually:
-	//stream.commit(); // -> 2; 4
+	//stream.tick(); // -> 2; 4
 	//log(stream.tx); // -> []
 	//log(s.value); // -> 2
 	//log(s2.value); // -> 4

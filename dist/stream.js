@@ -107,7 +107,15 @@ function mapUpdater(parent) {
 // Should we implement it in terms of a more complex and generalized
 // function or leave it as is?
 Stream.prototype.map = function map(f) {
-	return stream.link(this, stream(), mapUpdater, f);
+	var result = stream();
+	stream.link(this, result, mapUpdater, f);
+	// one way to do it:
+	//stream.link(this.ends(), result.ends(), mapUpdater, f);
+	// but this is exactly the same as with .reduce()
+	stream.link(this.ends(), result.ends(), function() {
+		this.newValue = mostRecentValue(this.master);
+	});
+	return result;
 };
 
 function filterUpdater(parent) {
@@ -170,7 +178,13 @@ function reduceUpdater(parent) {
 //
 // TODO example with `initial`
 Stream.prototype.reduce = function reduce(f, initial) {
-	return stream.link(this, stream().withInitialValue(initial), reduceUpdater, f);
+	var result = stream().withInitialValue(initial);
+	stream.link(this, result, reduceUpdater, f);
+	stream.link(this.ends(), result.ends(), function() {
+		this.newValue = mostRecentValue(result);
+	});
+
+	return result;
 };
 
 // Collect all values of a stream into an array
@@ -257,9 +271,16 @@ Stream.prototype.f = function fNoOp() {
 Stream.prototype.ends = function ends() {
 	if (!this.endStream) {
 		this.endStream = stream();
+		this.endStream.master = this;
 	}
 	return this.endStream;
 };
+
+// Updater function that is usually used with .ends() streams.
+// Update value from the most recent value of the master.
+function masterUpdater() {
+	this.newValue = mostRecentValue(this.master);
+}
 
 Stream.prototype.end = function end() {
 	// TODO should probably cut ties to parents to enable GC
@@ -451,37 +472,43 @@ stream.link = function link(parents, child, updater, f) {
 	return child;
 };
 
-// stream.depends(Stream parents..., Stream child, f) -> Stream
-//
-// Declare value of `child` to depend on each of `parents`.
-//
-// Whenever one or more parents is updated, `f` gets called with child
-// assigned to `this`.  Parents' `.newValue` is set if the parent has
-// been updated during this transaction. `f` should set `this.newValue`
-// if it wants to update the child.
-//
-stream.depends = function depends() {
-	log('depends');
-	// TODO should check that child doesn't have active .set()s in the
-	// current commit queue, or figure out another solution for that
-	//
-	// Parents are only needed for .rewire(), at least right now.
-	// But they could be used to avoid allocating new memory on `map`,
-	// etc. Every stream could have the same `updater`, which would
-	// take `f` from `this.f` and `parents` from `this.parents`
-	var arglen = arguments.length;
-	// `child` is the second last argument
-	var child = arguments[arglen - 2];
-	// `f` is the last argument
-	var f = arguments[arglen - 1];
+// Maybe not the right place for this
+stream.speedtest = function speedtest() {
+	var start;
 
-	// `parents` are all except the last two arguments
-	for (var i = 0; i < arglen - 2; i++) {
-		arguments[i].children.push(child);
-		child.parents.push(arguments[i]);
+	var count = 5000;
+
+	// just iterate with .forEach()
+	function simple(end) {
+		start = new Date();
+		var s = stream.fromRange(0, count);
+		s.onEnd(end);
 	}
-	child.f = f;
-	return child;
+
+	// iterate and count
+	function counter(end) {
+		start = new Date();
+		var s = stream.fromRange(0, count);
+		var s2 = s.reduce(function(count) {
+			return count + 1;
+		}, 0);
+		var s3 = s2.map(function(x) {
+			return x * 2;
+		});
+		s3.onEnd(end);
+	}
+
+	var reporter = function(name) {
+		return function(end) {
+			var time = new Date() - start;
+			var perSecond = count / time * 1000;
+			perSecond = String(perSecond).replace(/(\.\d).*/, '$1');
+			console.log(name + ':', perSecond, 'iterations / s');
+		};
+	};
+
+	simple(reporter('simple'));
+	setTimeout(function() { counter(reporter('counter')); }, 1000);
 }
 
 function hasNewValue(s) {
