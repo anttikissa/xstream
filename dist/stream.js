@@ -107,15 +107,7 @@ function mapUpdater(parent) {
 // Should we implement it in terms of a more complex and generalized
 // function or leave it as is?
 Stream.prototype.map = function map(f) {
-	var result = stream();
-	stream.link(this, result, mapUpdater, f);
-	// one way to do it:
-	//stream.link(this.ends(), result.ends(), mapUpdater, f);
-	// but this is exactly the same as with .reduce()
-	stream.link(this.ends(), result.ends(), function() {
-		this.newValue = mostRecentValue(this.master);
-	});
-	return result;
+	return stream.link(this, stream(), mapUpdater, f).linkEnds(this);
 };
 
 function filterUpdater(parent) {
@@ -178,13 +170,8 @@ function reduceUpdater(parent) {
 //
 // TODO example with `initial`
 Stream.prototype.reduce = function reduce(f, initial) {
-	var result = stream().withInitialValue(initial);
-	stream.link(this, result, reduceUpdater, f);
-	stream.link(this.ends(), result.ends(), function() {
-		this.newValue = mostRecentValue(result);
-	});
-
-	return result;
+	return stream.link(this, stream().withInitialValue(initial), reduceUpdater, f)
+		.linkEnds(this);
 };
 
 // Collect all values of a stream into an array
@@ -212,6 +199,12 @@ Stream.prototype.rewire = function rewire(newParent) {
 		parent.children.splice(parent.children.indexOf(this));
 	}
 	return stream.link(newParent, this, rewireUpdater);
+};
+
+// Utility function for linking the .ends() streams.
+Stream.prototype.linkEnds = function linkEnds(parent) {
+	stream.link(parent.ends(), this.ends(), masterUpdater);
+	return this;
 };
 
 //
@@ -242,8 +235,8 @@ Stream.prototype.inspect = function inspect() {
 
 // A shorthand, to enable:
 //
-// var s = stream(1).commit();
-Stream.prototype.commit = function commit() {
+// var s = stream(1).tick();
+Stream.prototype.tick = function tick() {
 	stream.transaction().commit();
 	return this;
 };
@@ -263,15 +256,13 @@ Stream.prototype.cancelTransactions = function cancelTransactions() {
 	});
 };
 
-
-// Update function. For regular streams, this is a no-op.
-Stream.prototype.f = function fNoOp() {
-};
-
 Stream.prototype.ends = function ends() {
 	if (!this.endStream) {
 		this.endStream = stream();
 		this.endStream.master = this;
+		this.endStream.ends = function() {
+			throw new Error("Don't call .ends() of an .ends(), you silly");
+		};
 	}
 	return this.endStream;
 };
@@ -457,6 +448,8 @@ stream.fromString = function fromString(string) {
 // has been set for those parents that were updated during this tick. 
 //
 // Return child.
+// 
+// TODO should this link .ends(), too? Lazily even?
 stream.link = function link(parents, child, updater, f) {
 	if (parents instanceof Stream) {
 		parents = [parents];

@@ -105,13 +105,7 @@ function mapUpdater(parent) {
 // Should we implement it in terms of a more complex and generalized
 // function or leave it as is?
 Stream.prototype.map = function map(f) {
-	var result = stream();
-	stream.link(this, result, mapUpdater, f);
-	// one way to do it:
-	//stream.link(this.ends(), result.ends(), mapUpdater, f);
-	// but this is exactly the same as with .reduce()
-	stream.link(this.ends(), result.ends(), masterUpdater);
-	return result;
+	return stream.link(this, stream(), mapUpdater, f).linkEnds(this);
 };
 
 function filterUpdater(parent) {
@@ -174,11 +168,8 @@ function reduceUpdater(parent) {
 //
 // TODO example with `initial`
 Stream.prototype.reduce = function reduce(f, initial) {
-	var result = stream().withInitialValue(initial);
-	stream.link(this, result, reduceUpdater, f);
-	stream.link(this.ends(), result.ends(), masterUpdater);
-
-	return result;
+	return stream.link(this, stream().withInitialValue(initial), reduceUpdater, f)
+		.linkEnds(this);
 };
 
 // Collect all values of a stream into an array
@@ -206,6 +197,12 @@ Stream.prototype.rewire = function rewire(newParent) {
 		parent.children.splice(parent.children.indexOf(this));
 	}
 	return stream.link(newParent, this, rewireUpdater);
+};
+
+// Utility function for linking the .ends() streams.
+Stream.prototype.linkEnds = function linkEnds(parent) {
+	stream.link(parent.ends(), this.ends(), masterUpdater);
+	return this;
 };
 
 //
