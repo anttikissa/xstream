@@ -199,7 +199,17 @@ Stream.prototype.rewire = function rewire(newParent) {
 	return stream.link(newParent, this, rewireUpdater);
 };
 
+// Update value from the most recent value of the master.
+//
+// Makes use of `master` that has been set in `.ends()`.
+function masterUpdater() {
+	this.newValue = mostRecentValue(this.master);
+}
+
 // Utility function for linking the .ends() streams.
+//
+// When `parent` ends, make `this` end as well, taking the end value
+// from `this.master`.
 Stream.prototype.linkEnds = function linkEnds(parent) {
 	stream.link(parent.ends(), this.ends(), masterUpdater);
 	return this;
@@ -264,12 +274,6 @@ Stream.prototype.ends = function ends() {
 	}
 	return this.endStream;
 };
-
-// Updater function that is usually used with .ends() streams.
-// Update value from the most recent value of the master.
-function masterUpdater() {
-	this.newValue = mostRecentValue(this.master);
-}
 
 Stream.prototype.end = function end() {
 	// TODO should probably cut ties to parents to enable GC
