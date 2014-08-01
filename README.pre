@@ -4,6 +4,7 @@
 - .onEnd() is not properly tested with derived streams
 - implement .ends() mapping for all primitives, find out if there's
   common functionality to them and abstract away
+- ticks vs transactions?
 - could we map .ends() lazily? We don't really need to map all of the .ends() and
   .errors() if nobody listens to them?  It would work so that the
   .ends of the resulting stream should be set into a function that

@@ -250,7 +250,7 @@ Stream.prototype.tick = function tick() {
 };
 
 // TODO there are more than one smells to this one
-// - name: it's not canceling the whole transaction, only the ops that
+// - name: it's not canceling the whole transaction, only the actions that
 // target this stream
 // - it's touching Transaction's internals directly
 // - still it's a valid way to .end() a stream that has transactions 
@@ -259,8 +259,8 @@ Stream.prototype.tick = function tick() {
 Stream.prototype.cancelTransactions = function cancelTransactions() {
 	var tx = stream.transaction();
 	var that = this;
-	tx.ops = tx.ops.filter(function(op) {
-		return op[0] !== that;
+	tx.actions = tx.actions.filter(function(action) {
+		return action.stream !== that;
 	});
 };
 
@@ -319,21 +319,6 @@ stream.nextId = 1;
 // Get the current transaction or create one.
 stream.transaction = function transaction() {
 	return stream.tx || (stream.tx = new Transaction());
-};
-
-// TODO there are more than one smells to this one
-// - name: it's not canceling the whole transaction, only the ops that
-// target this stream
-// - it's touching Transaction's internals directly
-stream.prototype.cancelTransactions = function cancelTransactions() {
-	var tx = stream.transaction();
-	var that = this;
-	log('cancel', this);
-	log('trans', tx.ops);
-	tx.ops = tx.ops.filter(function(op) {
-		return op[0] !== that;
-	});
-	log('trans after', tx.ops);
 };
 
 // Commit the current transaction.
@@ -724,11 +709,16 @@ function Transaction() {
 	this.cancel = defer(function() {
 		that.commit();
 	});
-	this.ops = [];
+	this.actions = [];
+}
+
+function SetAction(stream, value) {
+	this.stream = stream;
+	this.value = value;
 }
 
 Transaction.prototype.set = function(stream, value) {
-	this.ops.push([stream, value]);
+	this.actions.push(new SetAction(stream, value));
 }
 
 // Given an array of streams to update, create a graph of those streams
@@ -815,15 +805,12 @@ Transaction.prototype.commit = function() {
 	var updatedStreams = {};
 	var updatedStreamsOrdered = [];
 
-//	log('commit [' + this.ops.map(function(op) {
-//		return 'set ' + op[0] + ' to ' + op[1];
-//	}).join(', ') + ']');
+	for (var i = 0, len = this.actions.length; i < len; i++) {
+		var action = this.actions[i];
+		
+		var s = action.stream;
+		s.newValue = action.value;
 
-	for (var i = 0, opsLen = this.ops.length; i < opsLen; i++) {
-		var op = this.ops[i];
-		var s = op[0];
-
-		s.newValue = op[1];
 		if (!updatedStreams[s.id]) {
 			updatedStreamsOrdered.push(s);
 			updatedStreams[s.id] = true;
