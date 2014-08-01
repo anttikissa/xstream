@@ -82,12 +82,14 @@ Stream.prototype.forEach = function forEach(f) {
 // end of this tick.
 Stream.prototype.update = function update(value) {
 	var tx = stream.transaction();
-	tx.set(this, value);
+	tx.update(this, value);
 	return this;
 };
 
 // Deprecated name for `update`. For test compatibility.
 Stream.prototype.set = function set(value) {
+	throw new Error('set');
+	return null;
 	return this.update(value);
 };
 
@@ -243,6 +245,15 @@ Stream.prototype.inspect = function inspect() {
 	return this.toString();
 };
 
+// Log my values, optionally with a prefix
+Stream.prototype.log = function log(prefix) {
+	return this.forEach(prefix ? function(value) {
+		console.log(prefix, value);
+	} : function(value) {
+		console.log(value);
+	});
+}
+
 // A shorthand, to enable:
 //
 // var s = stream(1).tick();
@@ -252,7 +263,7 @@ Stream.prototype.tick = function tick() {
 };
 
 // TODO there are more than one smells to this one
-// - name: it's not canceling the whole transaction, only the ops that
+// - name: it's not canceling the whole transaction, only the actions that
 // target this stream
 // - it's touching Transaction's internals directly
 // - still it's a valid way to .end() a stream that has transactions 
@@ -261,8 +272,8 @@ Stream.prototype.tick = function tick() {
 Stream.prototype.cancelTransactions = function cancelTransactions() {
 	var tx = stream.transaction();
 	var that = this;
-	tx.ops = tx.ops.filter(function(op) {
-		return op[0] !== that;
+	tx.actions = tx.actions.filter(function(action) {
+		return action.stream !== that;
 	});
 };
 
@@ -278,17 +289,19 @@ Stream.prototype.ends = function ends() {
 };
 
 Stream.prototype.end = function end() {
+//	console.log('!! end');
+//	return;
 	// TODO should probably cut ties to parents to enable GC
 	// TODO how about children?
 	// when end() is part of a transaction 
 	// var s = stream();
 	// s.onEnd(log);
-	// s.set(1);
+	// s.update(1);
 	// s.end();
 	// -> should print 1
 	if (this.endStream) {
 		// TODO within a transaction?
-		this.endStream.set(this.value);
+		this.endStream.update(this.value);
 	}
 
 	this.cancelTransactions();
@@ -321,21 +334,6 @@ stream.nextId = 1;
 // Get the current transaction or create one.
 stream.transaction = function transaction() {
 	return stream.tx || (stream.tx = new Transaction());
-};
-
-// TODO there are more than one smells to this one
-// - name: it's not canceling the whole transaction, only the ops that
-// target this stream
-// - it's touching Transaction's internals directly
-stream.prototype.cancelTransactions = function cancelTransactions() {
-	var tx = stream.transaction();
-	var that = this;
-	log('cancel', this);
-	log('trans', tx.ops);
-	tx.ops = tx.ops.filter(function(op) {
-		return op[0] !== that;
-	});
-	log('trans after', tx.ops);
 };
 
 // Commit the current transaction.
@@ -726,12 +724,33 @@ function Transaction() {
 	this.cancel = defer(function() {
 		that.commit();
 	});
-	this.ops = [];
+	this.actions = [];
 }
 
-Transaction.prototype.set = function(stream, value) {
-	this.ops.push([stream, value]);
+function UpdateAction(stream, value) {
+	this.stream = stream;
+	this.value = value;
 }
+
+UpdateAction.prototype.perform = function performUpdate() {
+	this.stream.newValue = this.value;
+};
+
+function EndAction(stream) {
+	this.stream = stream;
+}
+
+EndAction.prototype.perform = function performEnd() {
+	// TODO
+};
+
+Transaction.prototype.update = function(stream, value) {
+	this.actions.push(new UpdateAction(stream, value));
+};
+
+Transaction.prototype.end = function(stream) {
+	this.actions.push(new EndAction(stream));
+};
 
 // Given an array of streams to update, create a graph of those streams
 // and their dependencies and return a topological ordering of that graph 
@@ -817,15 +836,13 @@ Transaction.prototype.commit = function() {
 	var updatedStreams = {};
 	var updatedStreamsOrdered = [];
 
-//	log('commit [' + this.ops.map(function(op) {
-//		return 'set ' + op[0] + ' to ' + op[1];
-//	}).join(', ') + ']');
+	for (var i = 0, len = this.actions.length; i < len; i++) {
+		var action = this.actions[i];
+	
+		action.perform();
 
-	for (var i = 0, opsLen = this.ops.length; i < opsLen; i++) {
-		var op = this.ops[i];
-		var s = op[0];
+		var s = action.stream;
 
-		s.newValue = op[1];
 		if (!updatedStreams[s.id]) {
 			updatedStreamsOrdered.push(s);
 			updatedStreams[s.id] = true;

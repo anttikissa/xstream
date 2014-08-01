@@ -730,9 +730,25 @@ function UpdateAction(stream, value) {
 	this.value = value;
 }
 
+UpdateAction.prototype.perform = function performUpdate() {
+	this.stream.newValue = this.value;
+};
+
+function EndAction(stream) {
+	this.stream = stream;
+}
+
+EndAction.prototype.perform = function performEnd() {
+	// TODO
+};
+
 Transaction.prototype.update = function(stream, value) {
 	this.actions.push(new UpdateAction(stream, value));
-}
+};
+
+Transaction.prototype.end = function(stream) {
+	this.actions.push(new EndAction(stream));
+};
 
 // Given an array of streams to update, create a graph of those streams
 // and their dependencies and return a topological ordering of that graph 
@@ -820,9 +836,10 @@ Transaction.prototype.commit = function() {
 
 	for (var i = 0, len = this.actions.length; i < len; i++) {
 		var action = this.actions[i];
-		
+	
+		action.perform();
+
 		var s = action.stream;
-		s.newValue = action.value;
 
 		if (!updatedStreams[s.id]) {
 			updatedStreamsOrdered.push(s);
