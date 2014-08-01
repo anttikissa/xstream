@@ -3,7 +3,6 @@
 cd $(dirname $0)
 
 mkdir -p tmp
-# node test.js
 SOURCES="README.pre docs/*.pre"
 ./mktest $SOURCES > tmp/test.js
 echo Generated tmp/test.js from $SOURCES
