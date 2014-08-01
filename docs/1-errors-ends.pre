@@ -8,11 +8,10 @@ In the real world, a stream of values is not always enough.  Sometimes
 A stream can update and end within the same tick, provided that the
 update happens first:
 
-	// TODO fixme by making the end a transaction op:
 	var s = stream();
 	s.onEnd(log);
 	s.update(1);
-	s.tick();
+	s.tick(); // delete me
 	s.end();
 	s.tick();
 	// -> 1
@@ -41,7 +40,7 @@ Streams created by `map` and `reduce` end when the parent stream ends:
 	s.onEnd(function(x) { console.log('s ends with', x); });
 	s2.onEnd(function(x) { console.log('s2 ends with', x); });
 	s3.onEnd(function(x) { console.log('s3 ends with', x); });
-	s.set(10);
+	s.update(10);
 	s.tick(); // TODO remove when end is transaction op
 	s.end();
 	stream.tick();

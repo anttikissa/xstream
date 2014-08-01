@@ -80,12 +80,14 @@ Stream.prototype.forEach = function forEach(f) {
 // end of this tick.
 Stream.prototype.update = function update(value) {
 	var tx = stream.transaction();
-	tx.set(this, value);
+	tx.update(this, value);
 	return this;
 };
 
 // Deprecated name for `update`. For test compatibility.
 Stream.prototype.set = function set(value) {
+	throw new Error('set');
+	return null;
 	return this.update(value);
 };
 
@@ -285,17 +287,19 @@ Stream.prototype.ends = function ends() {
 };
 
 Stream.prototype.end = function end() {
+//	console.log('!! end');
+//	return;
 	// TODO should probably cut ties to parents to enable GC
 	// TODO how about children?
 	// when end() is part of a transaction 
 	// var s = stream();
 	// s.onEnd(log);
-	// s.set(1);
+	// s.update(1);
 	// s.end();
 	// -> should print 1
 	if (this.endStream) {
 		// TODO within a transaction?
-		this.endStream.set(this.value);
+		this.endStream.update(this.value);
 	}
 
 	this.cancelTransactions();
@@ -721,13 +725,13 @@ function Transaction() {
 	this.actions = [];
 }
 
-function SetAction(stream, value) {
+function UpdateAction(stream, value) {
 	this.stream = stream;
 	this.value = value;
 }
 
-Transaction.prototype.set = function(stream, value) {
-	this.actions.push(new SetAction(stream, value));
+Transaction.prototype.update = function(stream, value) {
+	this.actions.push(new UpdateAction(stream, value));
 }
 
 // Given an array of streams to update, create a graph of those streams
