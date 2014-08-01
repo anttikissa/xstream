@@ -11,17 +11,13 @@ console.log('stream         : require(\'./stream\')');
 console.log('s1             : stream()');
 console.log('s2             : stream()');
 console.log('s3             : stream.combine(s1, s2, function(a, b) { return [a, b]; })');
-console.log('log            : a function that logs its input');
-console.log('logPrefix(str) : a function that logs \'str\' and its input');
-console.log('');
-console.log('s1, s2 and s3 have been already set up to log their inputs.')
 console.log('');
 console.log('Things to try:');
 console.log('');
-console.log('s1.set(1);');
-console.log('s1.set(2); s2.set(3) // test transactions');
-console.log('stream.fromArray([1,2,3,4,5]).forEach(logPrefix(\'got\'))');
-console.log('stream.fromString(\'foo\').forEach(logPrefix(\'char \'))');
+console.log('s1.update(1);');
+console.log('s1.update(2); s2.update(3) // test transactions');
+console.log('stream.fromArray([1,2,3,4,5]).log(\'got\')');
+console.log('stream.fromString(\'foo\').(\'char \')');
 console.log('');
 
 var context = repl.start('> ').context;
@@ -39,10 +35,11 @@ context.log = function() {
 };
 
 context.stream = require('./stream');
-context.s1 = context.stream().forEach(context.logPrefix('s1'));
-context.s2 = context.stream().forEach(context.logPrefix('s2'));
+context.s1 = context.stream().log('s1');
+context.s2 = context.stream().log('s2');
 context.s3 = context.stream.combine(
-	context.s1, context.s2, function(a, b) { return [a, b]; })
-	.forEach(context.logPrefix('s3'));
+	context.s1, context.s2, function(a, b) { return [a, b]; }).log('s3');
+
+context.s4 = context.stream.from('abc').log('char');
 
 

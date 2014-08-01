@@ -241,6 +241,15 @@ Stream.prototype.inspect = function inspect() {
 	return this.toString();
 };
 
+// Log my values, optionally with a prefix
+Stream.prototype.log = function log(prefix) {
+	return this.forEach(prefix ? function(value) {
+		console.log(prefix, value);
+	} : function(value) {
+		console.log(value);
+	});
+}
+
 // A shorthand, to enable:
 //
 // var s = stream(1).tick();
