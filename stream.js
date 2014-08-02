@@ -79,17 +79,24 @@ Stream.prototype.forEach = function forEach(f) {
 // `.forEach` listeners for the updated streams will be called at the
 // end of this tick.
 Stream.prototype.update = function update(value) {
-	var tx = stream.transaction();
-	tx.update(this, value);
+	stream.transaction().update(this, value);
 	return this;
 };
 
-// Deprecated name for `update`. For test compatibility.
-Stream.prototype.set = function set(value) {
-	throw new Error('set');
-	return null;
-	return this.update(value);
+Stream.prototype.end = function end() {
+
+// old end
+	if (this.endStream) {
+		// TODO within a transaction?
+		this.endStream.update(this.value);
+	}
+
+	this.cancelTransactions();
+
+//	stream.transaction().end(this);
+	return this;
 };
+
 
 function mapUpdater(parent) {
 	this.newValue = this.f(parent.newValue);
@@ -284,28 +291,6 @@ Stream.prototype.ends = function ends() {
 		};
 	}
 	return this.endStream;
-};
-
-Stream.prototype.end = function end() {
-//	console.log('!! end');
-//	return;
-	// TODO should probably cut ties to parents to enable GC
-	// TODO how about children?
-	// when end() is part of a transaction 
-	// var s = stream();
-	// s.onEnd(log);
-	// s.update(1);
-	// s.end();
-	// -> should print 1
-	if (this.endStream) {
-		// TODO within a transaction?
-		this.endStream.update(this.value);
-	}
-
-	this.cancelTransactions();
-	// TODO make in a transaction
-//	this.listeners = [];
-//	do something with listeners, children/parents, etc.?
 };
 
 // TODO endWhen, endWhenOne, endWhenAll
@@ -841,9 +826,11 @@ Transaction.prototype.commit = function() {
 
 		var s = action.stream;
 
-		if (!updatedStreams[s.id]) {
-			updatedStreamsOrdered.push(s);
-			updatedStreams[s.id] = true;
+		if (action instanceof UpdateAction) {
+			if (!updatedStreams[s.id]) {
+				updatedStreamsOrdered.push(s);
+				updatedStreams[s.id] = true;
+			}
 		}
 	}
 
