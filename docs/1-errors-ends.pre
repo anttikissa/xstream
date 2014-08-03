@@ -11,25 +11,25 @@ update happens first:
 	var s = stream();
 	s.onEnd(log);
 	s.update(1);
-	s.tick(); // delete me
 	s.end();
 	s.tick();
 	// -> 1
 
 But you can't call `update` after the stream has ended:
 
-	return; // TODO test disabled
 	var s2 = stream();
 	s2.onEnd(log);
 	s2.update(1);
 	s2.end();
+	s2.tick();
+	// -> 1
 	s2.update(2);
 	try {
 		s2.tick();
 	} catch (e) {
-		console.log(e);
+		console.log(e.message);
 	}
-	// -> 'cannot update ended stream'
+	// -> cannot update ended stream
 
 Streams created by `map` and `reduce` end when the parent stream ends:
 
@@ -41,14 +41,12 @@ Streams created by `map` and `reduce` end when the parent stream ends:
 	s2.onEnd(function(x) { console.log('s2 ends with', x); });
 	s3.onEnd(function(x) { console.log('s3 ends with', x); });
 	s.update(10);
-	s.tick(); // TODO remove when end is transaction op
 	s.end();
 	stream.tick();
-
 	// -> s ends with 10; s2 ends with 11; s3 ends with 16
 
-Errors are a bit similar to `ends`. They are intended for exceptional
-situations that need to be handled.  You trigger an exception by calling
+Errors are like ends; the only difference is the `catch` and `finally`
+helpers used to handle errors.  You trigger an exception by calling
 `s.error(error)`, and catch them by listening to stream `s.errors()` or
 by installing a `catch` handler: 
 

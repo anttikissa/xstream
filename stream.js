@@ -83,20 +83,35 @@ Stream.prototype.update = function update(value) {
 	return this;
 };
 
+// End this stream, causing this.ends() to update with the most recent
+// value of this stream.
+//
+// If end() is called outside commit phase, the .ends() stream will update
+// during the next tick.  Calling update() on a stream after end() is called
+// will result in error when the next transaction is committed.
+//
+// If end() is called in the commit phase (i.e. inside a .forEach handler),
+// it will cancel the updates that were scheduled for this stream during the
+// next tick.  It works this way so that automatic streams like .fromRange(0)
+// can use .forEach() to schedule the next update, and we can use .end() within
+// a .forEach handler to end them with the current value.
+//
+// TODO there's probably a cleaner way to do it
+//
 Stream.prototype.end = function end() {
-
-// old end
-	if (this.endStream) {
-		// TODO within a transaction?
-		this.endStream.update(this.value);
+	if (stream.withinCommit) {
+		this.cancelTransactions();
 	}
-
-	this.cancelTransactions();
-
-//	stream.transaction().end(this);
+	stream.transaction().end(this);
 	return this;
 };
 
+// Has the stream ended?
+//
+// I.e. is it safe to call .update() on this stream
+Stream.prototype.ended = function ended() {
+	return this.endStream && mostRecentValue(this.endStream) !== undefined;
+}
 
 function mapUpdater(parent) {
 	this.newValue = this.f(parent.newValue);
@@ -310,6 +325,14 @@ var stream = function stream(initial) {
 	return new Stream(initial);
 };
 
+// Will updates automatically schedule a commit?
+stream.autoCommit = true;
+
+// HACK HACK HACK
+// To enable .end() to work correctly when it's called
+// during the commit phase
+stream.withinCommit = false;
+
 // All streams have an `id`, starting from 1.
 // Debug functions refer to them as 's1', 's2', and so on.
 stream.nextId = 1;
@@ -322,6 +345,7 @@ stream.transaction = function transaction() {
 // Commit the current transaction.
 stream.tick = function tick() {
 	stream.transaction().commit();
+	return stream;
 }
 
 // Make a stream out of pretty much anything.
@@ -704,9 +728,11 @@ var defer = typeof process !== 'undefined' && process.nextTick ? deferNextTick :
 //
 function Transaction() {
 	var that = this;
-	this.cancel = defer(function() {
-		that.commit();
-	});
+	if (stream.autoCommit) {
+		this.cancel = defer(function() {
+			that.commit();
+		});
+	}
 	this.actions = [];
 }
 
@@ -716,7 +742,14 @@ function UpdateAction(stream, value) {
 }
 
 UpdateAction.prototype.perform = function performUpdate() {
+	if (this.stream.ended()) {
+		throw new Error('cannot update ended stream');
+	}
 	this.stream.newValue = this.value;
+};
+
+UpdateAction.prototype.toString = UpdateAction.prototype.inspect = function() {
+	return 'update(s' + this.stream.id + ', ' + this.value + ')';
 };
 
 function EndAction(stream) {
@@ -724,7 +757,22 @@ function EndAction(stream) {
 }
 
 EndAction.prototype.perform = function performEnd() {
+
+	var s = this.stream;
+	if (s.endStream) {
+		// TODO it should do it within this transaction?
+		// I.e. should modify an ongoing transaction queue?
+		// Is dirty!
+		s.endStream.update(mostRecentValue(s));
+	}
+
+//	this.cancelTransactions();
+
 	// TODO
+};
+
+EndAction.prototype.toString = EndAction.prototype.inspect = function() {
+	return 'end(s' + this.stream.id + ')';
 };
 
 Transaction.prototype.update = function(stream, value) {
@@ -807,47 +855,66 @@ function updateOrder(nodes) {
 	return nodesToUpdate;
 }
 
+// Needs to treat EndActions specially.
+//
+// ..., update(s, x), end(s), ...  should result in 
+// ..., update(s, x), update(s.endStream, x), ...
+//
+// However
+//
+// ..., end(s), update(s, x), ... should be error
+//
 Transaction.prototype.commit = function() {
-	if (this.cancel) {
-		this.cancel();
-	}
+	stream.withinCommit = true;
 
-	if (stream.tx === this) {
-		delete stream.tx;
-	}
+	try {
+		if (this.cancel) {
+			this.cancel();
+		}
 
-	var updatedStreams = {};
-	var updatedStreamsOrdered = [];
+		var updatedStreams = {};
+		var updatedStreamsOrdered = [];
 
-	for (var i = 0, len = this.actions.length; i < len; i++) {
-		var action = this.actions[i];
-	
-		action.perform();
+		for (var i = 0; i < this.actions.length; i++) {
+			var action = this.actions[i];
 
-		var s = action.stream;
+			action.perform();
 
-		if (action instanceof UpdateAction) {
-			if (!updatedStreams[s.id]) {
-				updatedStreamsOrdered.push(s);
-				updatedStreams[s.id] = true;
+			var s = action.stream;
+
+			if (action instanceof UpdateAction) {
+				if (!updatedStreams[s.id]) {
+					updatedStreamsOrdered.push(s);
+					updatedStreams[s.id] = true;
+				}
 			}
 		}
-	}
 
-	var streamsToUpdate = updateOrder(updatedStreamsOrdered);
-	
-	streamsToUpdate.forEach(function(s) {
-		s.updater.apply(s, s.parents);
-	});
-
-	// I wonder if these could be done in the same .forEach()
-	streamsToUpdate.forEach(function(s) {
-		if (hasNewValue(s)) {
-			s.value = s.newValue;
-			delete s.newValue;
-			s.broadcast();
+		if (stream.tx === this) {
+			delete stream.tx;
 		}
-	});
+
+		var streamsToUpdate = updateOrder(updatedStreamsOrdered);
+
+		streamsToUpdate.forEach(function(s) {
+			s.updater.apply(s, s.parents);
+		});
+
+		// I wonder if these could be done in the same .forEach()
+		streamsToUpdate.forEach(function(s) {
+			if (hasNewValue(s)) {
+				s.value = s.newValue;
+				delete s.newValue;
+				s.broadcast();
+			}
+		});
+	} finally {
+		// In case of emergency, dump the whole transaction queue
+		if (stream.tx === this) {
+			delete stream.tx;
+		}
+		stream.withinCommit = false;
+	}
 };
 
 module.exports = stream;
