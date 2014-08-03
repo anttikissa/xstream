@@ -1,0 +1,57 @@
+## Metastreams
+
+Metastreams are streams of streams.
+
+It's not as confusing as it sounds.  You can see stream as a unit of
+computation that produces some sequence of values as its output.
+Whereas usual streams consist of values, you can think of metastreams
+as a sequence of processes that produce output.  There are a few
+operators that you can use to collect that output in useful ways:
+
+Let's take an example.
+
+	// For letters a, b, and c
+	var pairs = stream.fromString('abc').map(function(letter) {
+		// Return a stream that produces values like 'a1', 'a2', and 'a3'
+		return stream.fromRange(1, 3).map(function(number) {
+			return letter + number;
+		});
+	});
+
+	// To read all of the values in parallel, you could do this:
+	pairs.forEach(function(stream) {
+		stream.forEach(function(value) {
+			console.log(value);
+		});
+	});
+
+	// Let's see what the output becomes, tick by tick:
+	pairs.tick(2);
+	// -> a1
+	pairs.tick();
+	// -> a2; b1
+	pairs.tick();
+	// -> a3; b2; c1
+	pairs.tick();
+	// -> b3; c2
+	pairs.tick();
+	// -> c3
+
+Or then you could use the operator .mergeStream() to achieve the same:
+
+	// For letters a, b, and c
+	var pairs = stream.fromString('abc').map(function(letter) {
+		// Return a stream that produces values like 'a1', 'a2', and 'a3'
+		return stream.fromRange(1, 3).map(function(number) {
+			return letter + number;
+		});
+	});
+
+	pairs.mergeStream().forEach(function(value) {
+		console.log(value);
+	});
+//
+//	// ->
+
+The basic operators of metastreams are 
+

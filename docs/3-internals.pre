@@ -5,6 +5,78 @@ This chapter attempts to answers two questions:
 - how does this thing work,
 - how would I implement my own combinators like `.map`, `.combine`, etc?
 
+## How to implement iterators like .fromArray()
+
+TODO is 'iterator' the name we want to use here?
+
+Iterator streams, like those produced by `.fromArray`, `.fromString`, or
+`.fromRange`, share a few conventions.  They set the `state` member of
+the stream to whatever state they need to complete the iteration, and
+the `next` member of the stream to a function that performs one step
+of the iteration.  Then they update the resulting stream with its
+initial value (by calling it's `next` method, or otherwise), and finally
+make sure `next` gets called on each tick by calling `.forEach(result.next)`
+
+Here's a the blueprint of a function that creates an iterator stream:
+
+	function iteratorStream(args) {
+		var result = stream();
+		result.state = "some state here";
+		result.next = function next() {
+			if ("end condition for iteration, using .state") {
+				return this.end();
+			}
+
+			var newValue = "iterate one step, change .state accordingly";
+			this.update(newValue);
+		};
+
+		result.next(); // OR result.update(initialValue);
+		return result.forEach(result.next);
+	}
+
+For instance, to create a stream that factorizes a number:
+
+	// Is x a factor of y?
+	function isFactor(x, y) {
+		return !((y / x) % 1);
+	}
+
+	// Return the lowest factor of number.
+	function lowestFactor(number) {
+		for (var i = 2; i < number; i++) {
+			if (isFactor(i, number)) {
+				return i;
+			}
+		}
+		return number;
+	}
+
+	function factorize(number) {
+		var result = stream();
+		result.state = number;
+
+		result.next = function next() {
+			if (this.state === 1) {
+				return this.end();
+			}
+
+			var factor = lowestFactor(this.state);
+			this.state = this.state / factor;
+			this.update(factor);
+		};
+
+		result.next();
+
+		return result.forEach(result.next);
+	}
+
+	factorize(2002).forEach(function(factor) {
+		console.log(factor);
+	});
+	stream.tick(4);
+	// -> 2; 7; 11; 13
+
 ### link / unlink
 
 ### taking care of .ends(), .errors()

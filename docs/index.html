@@ -123,7 +123,232 @@ updates but as a means of iteration.
 <li>streams <i>end</i>, and we want to react when it happens
 <li>streams have <i>errors</i>, and we&#39;re interested in them as well
 </ul>
-<p>So...
+<p>A stream can update and end within the same tick, provided that the
+update happens first:
+<pre class=code>var s = stream();
+s.onEnd(log);
+s.update(1);
+s.end();
+s.tick();
+// -&gt; 1</pre>
+<p>But you can&#39;t call <code>update</code> after the stream has ended:
+<pre class=code>var s2 = stream();
+s2.onEnd(log);
+s2.update(1);
+s2.end();
+s2.tick();
+// -&gt; 1
+s2.update(2);
+try {
+    s2.tick();
+} catch (e) {
+    console.log(e.message);
+}
+// -&gt; cannot update ended stream</pre>
+<p>Streams created by <code>map</code> and <code>reduce</code> end when the parent stream ends:
+<pre class=code>var s = stream();
+var s2 = s.map(stream.util.inc);
+var s3 = s2.reduce(stream.util.plus, 5);
+
+s.onEnd(function(x) { console.log(&#39;s ends with&#39;, x); });
+s2.onEnd(function(x) { console.log(&#39;s2 ends with&#39;, x); });
+s3.onEnd(function(x) { console.log(&#39;s3 ends with&#39;, x); });
+s.update(10);
+s.end();
+stream.tick();
+// -&gt; s ends with 10; s2 ends with 11; s3 ends with 16</pre>
+<p>Errors are like ends; the only difference is the <code>catch</code> and <code>finally</code>
+helpers used to handle errors.  You trigger an exception by calling
+<code>s.error(error)</code>, and catch them by listening to stream <code>s.errors()</code> or
+by installing a <code>catch</code> handler: 
+<pre class=code>return; // TODO test disabled
+s = stream.ajax(&#39;http://foobar.com/api/user/123.json&#39;);
+s.onEnd(function(result) {
+    // ok, we have &#39;result&#39;
+});
+s.errors().forEach(function(error) {
+    // called for all errors
+});
+s.catch(SomeException, function(error) {
+    // called for SomeExceptions
+}).catch(SyntaxError, function(error) {
+    // called for SyntaxErrors
+}).catch(function(error) {
+    // we have some other kind of error
+});</pre>
+<p>Finally, we have <code>finally</code>, which executes its argument when the stream
+either ends or encounters an error:
+<pre class=code>return; // TODO test disabled
+s.finally(function() {
+    // do something;
+});</pre>
+<p>As an implementation artifact (because it&#39;s implemented as <code>finally =
+function(f) { this.ends().forEach(f); this.errors().forEach(f); }</code>), the
+<code>finally</code> handler is called with either the last value or the error, but
+you don&#39;t know which.
+<h2>Metastreams</h2>
+<p>Metastreams are streams of streams.
+<p>It&#39;s not as confusing as it sounds.  You can see stream as a unit of
+computation that produces some sequence of values as its output.
+Whereas usual streams consist of values, you can think of metastreams
+as a sequence of processes that produce output.  There are a few
+operators that you can use to collect that output in useful ways:
+<p>Let&#39;s take an example.
+<pre class=code>// For letters a, b, and c
+var pairs = stream.fromString(&#39;abc&#39;).map(function(letter) {
+    // Return a stream that produces values like &#39;a1&#39;, &#39;a2&#39;, and &#39;a3&#39;
+    return stream.fromRange(1, 3).map(function(number) {
+        return letter + number;
+    });
+});
+
+// To read all of the values in parallel, you could do this:
+pairs.forEach(function(stream) {
+    stream.forEach(function(value) {
+        console.log(value);
+    });
+});
+
+// Let&#39;s see what the output becomes, tick by tick:
+pairs.tick(2);
+// -&gt; a1
+pairs.tick();
+// -&gt; a2; b1
+pairs.tick();
+// -&gt; a3; b2; c1
+pairs.tick();
+// -&gt; b3; c2
+pairs.tick();
+// -&gt; c3</pre>
+<p>Or then you could use the operator .mergeStream() to achieve the same:
+<pre class=code>// For letters a, b, and c
+var pairs = stream.fromString(&#39;abc&#39;).map(function(letter) {
+    // Return a stream that produces values like &#39;a1&#39;, &#39;a2&#39;, and &#39;a3&#39;
+    return stream.fromRange(1, 3).map(function(number) {
+        return letter + number;
+    });
+});</pre>
+<p>//  pairs.mergeStream().forEach(function(value) {
+//      console.log(value);
+//  });
+//
+//  // -&gt;
+<p>The basic operators of metastreams are 
+<h2>The juicy parts</h2>
+<p>This chapter attempts to answers two questions:
+<ul>
+<li>how does this thing work,
+<li>how would I implement my own combinators like <code>.map</code>, <code>.combine</code>, etc?
+</ul>
+<h2>How to implement iterators like .fromArray()</h2>
+<p>TODO is &#39;iterator&#39; the name we want to use here?
+<p>Iterator streams, like those produced by <code>.fromArray</code>, <code>.fromString</code>, or
+<code>.fromRange</code>, share a few conventions.  They set the <code>state</code> member of
+the stream to whatever state they need to complete the iteration, and
+the <code>next</code> member of the stream to a function that performs one step
+of the iteration.  Then they update the resulting stream with its
+initial value (by calling it&#39;s <code>next</code> method, or otherwise), and finally
+make sure <code>next</code> gets called on each tick by calling <code>.forEach(result.next)</code>
+<p>Here&#39;s a the blueprint of a function that creates an iterator stream:
+<pre class=code>function iteratorStream(args) {
+    var result = stream();
+    result.state = &quot;some state here&quot;;
+    result.next = function next() {
+        if (&quot;end condition for iteration, using .state&quot;) {
+            return this.end();
+        }
+
+        var newValue = &quot;iterate one step, change .state accordingly&quot;;
+        this.update(newValue);
+    };
+
+    result.next(); // OR result.update(initialValue);
+    return result.forEach(result.next);
+}</pre>
+<p>For instance, to create a stream that factorizes a number:
+<pre class=code>// Is x a factor of y?
+function isFactor(x, y) {
+    return !((y / x) % 1);
+}
+
+// Return the lowest factor of number.
+function lowestFactor(number) {
+    for (var i = 2; i &lt; number; i++) {
+        if (isFactor(i, number)) {
+            return i;
+        }
+    }
+    return number;
+}
+
+function factorize(number) {
+    var result = stream();
+    result.state = number;
+
+    result.next = function next() {
+        if (this.state === 1) {
+            return this.end();
+        }
+
+        var factor = lowestFactor(this.state);
+        this.state = this.state / factor;
+        this.update(factor);
+    };
+
+    result.next();
+
+    return result.forEach(result.next);
+}
+
+factorize(2002).forEach(function(factor) {
+    console.log(factor);
+});
+stream.tick(4);
+// -&gt; 2; 7; 11; 13</pre>
+<h3>link / unlink</h3>
+<h3>taking care of .ends(), .errors()</h3>
+<h3>rewire</h3>
+<h3>Design</h3>
+<p>What principles guided the design of the internals?
+<p>Debuggability
+<p>Readability
+<p>Power to the people (the tools used to implement primitives such as
+<code>map</code> and `filter&#39; should be given to any user of the library)
+<p>Managing complexity: this library attempts to do many different things
+at once, so it&#39;s on an inevitable path towards death by complexity.  How
+to manage complexity?
+<p>Attempts to tackle complexity by itself are doomed to fail.  The only
+possible solution is to cut its roots one by one.  You can never beat
+complexity, but you can find spots where you can coexist with it.
+<ul>
+<li>solving a simple problem at a time
+<li>figure out a locally applicable solution that works reasonably well
+within the specified constraints.  
+<li>more complex behavior may emerge out of these simple solutions (and comes without warranty)
+</ul>
+<p>Example? &quot;Atomic value propagation&quot; is one problem.
+<p>&quot;Iterating over streams such that streams are kept synchronized&quot; is
+another.
+<p>&quot;That .end() should work in reasonable cases&quot; is a problem.
+<p>, user should be able to implement any of the
+primitives by themselves
+<p>Design
+<h3>How to read the source code</h3>
+<p>Conventions, figure out a good format for type signatures
+Should pick a convention for argument names, a, b, c / x, y, z, or something
+<p>Maybe also a part:
+<h2>Practical development</h2>
+<ul>
+<li>Debugging
+<li>performance analysis
+<li>making sure things are garbage collected, etc.
+</ul>
+<p>whenever that information becomes available.
+<h2>Utils</h2>
+<ul>
+<li>lots of these, probably will need
+<li>plus, inc, mul, count, min, max, pluck, limit, etc.
+</ul>
 <h2>Transactions</h2>
 <blockquote><p>&quot;And I didn&#39;t have any idea what to do but I knew I needed a click so
 we put a click on the 24 track which then was synced to the moog
@@ -134,11 +359,11 @@ modular.&quot; —Giorgio Moroder
 transaction.
 <p>TODO this is fiction still
 <pre class=code>var s = stream();
-s.set(123);
+s.update(123);
 s.forEach(function(value) { console.log(value); });
 stream.tick();
 // -&gt; 123
-s.set(234);
+s.update(234);
 stream.tick();
 // -&gt; 234</pre>
 <h3>Open issues</h3>

@@ -1,6 +1,10 @@
 
 # TODO
 
+- Separate tests properly! Make them run serialized. Or at least make
+  them totally independent (so that they don't share the same instance of
+  `stream`, which makes the transaction queue shared as well)
+- and make it possible to use stream.log() in tests.
 - .onEnd() is not properly tested with derived streams
 - implement .ends() mapping for all primitives, find out if there's
   common functionality to them and abstract away

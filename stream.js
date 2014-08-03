@@ -277,8 +277,8 @@ Stream.prototype.log = function log(prefix) {
 // A shorthand, to enable:
 //
 // var s = stream(1).tick();
-Stream.prototype.tick = function tick() {
-	stream.transaction().commit();
+Stream.prototype.tick = function tick(times) {
+	stream.tick(times);
 	return this;
 };
 
@@ -342,9 +342,14 @@ stream.transaction = function transaction() {
 	return stream.tx || (stream.tx = new Transaction());
 };
 
-// Commit the current transaction.
-stream.tick = function tick() {
-	stream.transaction().commit();
+// "Tick" by committing the current transaction.
+//
+// Optionally, specify a number of times to tick.
+stream.tick = function tick(times) {
+	times = times || 1;
+	while (times--) {
+		stream.transaction().commit();
+	}
 	return stream;
 }
 
@@ -354,14 +359,16 @@ stream.tick = function tick() {
 // stream.from([Object]) -> Stream
 // stream.from(Object...) -> Stream
 stream.from = function from(first) {
-	if (typeof first === 'string') {
-		return stream.fromString(first);
+	if (arguments.length === 1) {
+		if (typeof first === 'string') {
+			return stream.fromString(first);
+		}
+		if (first instanceof Array) {
+			return stream.fromArray(first);
+		}
+		// TODO promises, callbacks, generators, etc.
+		// Fall back to `.fromValues`.
 	}
-	if (first instanceof Array) {
-		return stream.fromArray(first);
-	}
-	// TODO promises, callbacks, generators, etc.
-	// Fall back to `.fromValues`.
 	return stream.fromValues.apply(stream, arguments);
 }
 
@@ -373,15 +380,14 @@ stream.from = function from(first) {
 // values in following transactions.
 stream.fromArray = function fromArray(array) {
 	var result = stream();
-	result.rest = array.slice();
+	result.state = array.slice();
 
 	result.next = function next() {
-		if (this.rest.length) {
-			this.update(this.rest.shift());
-		} else {
-			this.end();
+		if (this.state.length === 0) {
+			return this.end();
 		}
-		return this;
+
+		this.update(this.state.shift());
 	}
 
 	result.next();
@@ -392,19 +398,16 @@ stream.fromArray = function fromArray(array) {
 stream.fromRange = function fromRange(start, end, step) {
 	var result = stream();
 	result.state = {
-		current: start,
 		end: end || Infinity,
 		step: step || 1
 	};
 
 	result.next = function next() {
-		var state = this.state;
-		state.current += state.step;
-		if (state.current <= state.end) {
-			this.update(state.current);
-		} else {
-			this.end();
+		if (this.value + this.state.step > this.state.end) {
+			return this.end();
 		}
+
+		this.update(this.value + this.state.step);
 	};
 
 	result.update(start);
@@ -599,7 +602,6 @@ stream.zip = function() {
 	args.push(Array);
 	return stream.combine.apply(null, args);
 };
-
 
 //
 // A collection of useful functions.
