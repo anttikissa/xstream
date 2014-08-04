@@ -1,7 +1,7 @@
 {
-  "name": "stream",
-  "version": "0.0.0",
-  "description": "stream",
+  "name": "xstream",
+  "version": "0.0.1",
+  "description": "xstream",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
