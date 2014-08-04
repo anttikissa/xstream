@@ -42,14 +42,16 @@ function access(selector) {
 	return function(o) { return o[key]; };
 }
 
+function nop() {
+}
+
 function Stream(initial) {
 	this.id = stream.nextId++;
 	this.parents = []; // streams I depend on
 	this.children = []; // streams that depend on me
 	this.listeners = []; // listeners that get my value when it updates
 	this.value = undefined;
-	this.updater = function() {};
-	this.f = null;
+	this.updater = nop;
 
 	if (initial !== undefined) {
 		this.update(initial);
@@ -175,6 +177,77 @@ Stream.prototype.uniq = function uniq() {
 	// TODO f could be the equals function?
 	return stream.link(this, stream(), uniqUpdater);
 };
+
+// A shorthand to initialize stream.state.
+Stream.prototype.withState = function withState(state) {
+	this.state = state;
+	return this;
+};
+
+function takeUpdater(parent) {
+	console.log('takeUpdater, parent has value', parent.newValue);
+	if (this.state-- <= 0) {
+		return this.end();
+	}
+	this.newValue = parent.newValue;
+}
+
+// Returns `n` first elements
+Stream.prototype.take = function take(n) {
+	return stream.link(this, stream().withState(n), takeUpdater)
+		.linkEnds(this);
+};
+
+function skipUpdater(parent) {
+	if (this.state > 0) {
+		this.state--;
+		return;
+	}
+	this.newValue = parent.newValue;
+}
+
+// Leaves out `n` first elements, then returns the rest
+Stream.prototype.skip = function skip(n) {
+	return stream.link(this, stream().withState(n), skipUpdater)
+		.linkEnds(this);
+};
+
+Stream.prototype.leave = function leave(n) {
+	var result = stream();
+	this.slidingWindow(n).onEnd(function(values) {
+		result.rewire(stream.fromArray(values));
+	});
+	return result;
+};
+
+function slidingWindowUpdater(parent) {
+	console.log('slidingWindowUpdater before', this.value);
+	this.newValue = this.value.concat(parent.newValue);
+	while (this.newValue.length > this.state) {
+		this.newValue.shift();
+	}
+	console.log('slidingWindowUpdater after', this.newValue);
+};
+
+// A stream with an array of at most `n` latest values of its parent.
+//
+// Could probably be implemented more cleanly with .reduce()
+Stream.prototype.slidingWindow = function slidingWindow(n) {
+	return stream.link(this, stream().withState(n).withInitialValue([]),
+		slidingWindowUpdater).linkEnds(this);
+};
+
+// Skips `start` elements, then returns elements until the `end`th
+// element.
+//
+// Similar to Array.prototype.slice, except that slice(-n) doesn't 
+// do what it does on an array.  Use `leave(n)` for that.
+Stream.prototype.slice = function slice(start, end) {
+	if (end === undefined) {
+		return this.skip(start);
+	}
+	return this.skip(start).take(end - start);
+}
 
 function reduceUpdater(parent) {
 	if (this.value !== undefined) {
@@ -397,8 +470,7 @@ stream.from = function from(first) {
 // Set the the first value in the current transaction and the following
 // values in following transactions.
 stream.fromArray = function fromArray(array) {
-	var result = stream();
-	result.state = array.slice();
+	var result = stream().withState(array.slice());
 
 	result.next = function next() {
 		if (this.state.length === 0) {
@@ -416,7 +488,7 @@ stream.fromArray = function fromArray(array) {
 stream.fromRange = function fromRange(start, end, step) {
 	var result = stream();
 	result.state = {
-		end: end || Infinity,
+		end: end !== undefined ? end : Infinity,
 		step: step || 1
 	};
 
@@ -534,6 +606,12 @@ stream.speedtest = function speedtest() {
 	setTimeout(function() { counter(reporter('counter')); }, 1000);
 }
 
+// Has stream been updated during this tick or before?
+function hasValue(s) {
+	return mostRecentValue(s) !== undefined;
+}
+
+// Has stream been updated during this tick?
 function hasNewValue(s) {
 	return s.hasOwnProperty('newValue');
 }
@@ -563,7 +641,34 @@ function combineUpdater() {
 	this.newValue = this.f.apply(null, values);
 };
 
+function combineWhenAll2Updater(firstParent, secondParent) {
+	if (hasValue(firstParent) && hasValue(secondParent)) {
+		this.newValue = this.f(
+			mostRecentValue(firstParent),
+			mostRecentValue(secondParent));
+	}
+}
+
+function combineWhenAll3Updater(firstParent, secondParent, thirdParent) {
+	if (hasValue(firstParent) && hasValue(secondParent) && 
+		hasValue(thirdParent)) {
+		this.newValue = this.f(
+			mostRecentValue(firstParent),
+			mostRecentValue(secondParent),
+			mostRecentValue(thirdParent));
+	}
+}
+
+function combineWhenAllUpdater() {
+	if (this.parents.every(hasValue)) {
+		var values = this.parents.map(mostRecentValue);
+		this.newValue = this.f.apply(null, values);
+	}
+};
+
+
 // stream.combine(Stream streams..., f) -> Stream
+// TODO link .ends()
 // TODO document
 stream.combine = function combine() {
 	var parents = toArray(arguments);
@@ -571,6 +676,17 @@ stream.combine = function combine() {
 	var updater = parents.length === 2 ? combine2Updater :
 		parents.length === 3 ? combine3Updater :
 		combineUpdater;
+
+	return stream.link(parents, stream(), updater, f);
+}
+
+// TODO link .ends()
+stream.combineWhenAll = function combineWhenAll() {
+	var parents = toArray(arguments);
+	var f = parents.pop();
+	var updater = parents.length === 2 ? combineWhenAllUpdater :
+		parents.length === 3 ? combineWhenAllUpdater :
+		combineWhenAllUpdater;
 
 	return stream.link(parents, stream(), updater, f);
 }
@@ -761,11 +877,14 @@ function UpdateAction(stream, value) {
 	this.value = value;
 }
 
+// Perform by convention returns true if this action resulted in a
+// direct update action (i.e. stream.newValue was set).
 UpdateAction.prototype.perform = function performUpdate() {
 	if (this.stream.ended()) {
 		throw new Error('cannot update ended stream');
 	}
 	this.stream.newValue = this.value;
+	return true;
 };
 
 UpdateAction.prototype.toString = UpdateAction.prototype.inspect = function() {
@@ -900,11 +1019,8 @@ Transaction.prototype.commit = function() {
 		for (var i = 0; i < this.actions.length; i++) {
 			var action = this.actions[i];
 
-			action.perform();
-
-			var s = action.stream;
-
-			if (action instanceof UpdateAction) {
+			if (action.perform()) {
+				var s = action.stream;
 				if (!updatedStreams[s.id]) {
 					updatedStreamsOrdered.push(s);
 					updatedStreams[s.id] = true;
@@ -919,11 +1035,16 @@ Transaction.prototype.commit = function() {
 		var streamsToUpdate = updateOrder(updatedStreamsOrdered);
 
 		streamsToUpdate.forEach(function(s) {
-			s.updater.apply(s, s.parents);
+			// Only update if at least one of the parents were updated.
+			if (s.parents.some(hasNewValue)) {
+				s.updater.apply(s, s.parents);
+			}
 		});
 
-		// I wonder if these could be done in the same .forEach()
 		streamsToUpdate.forEach(function(s) {
+			// Only broadcast the new value if this stream was updated,
+			// and delete s.newValue while we're at it; it's no longer
+			// needed.
 			if (hasNewValue(s)) {
 				s.value = s.newValue;
 				delete s.newValue;
