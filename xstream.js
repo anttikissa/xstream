@@ -40,14 +40,16 @@ function access(selector) {
 	return function(o) { return o[key]; };
 }
 
+function nop() {
+}
+
 function Stream(initial) {
 	this.id = stream.nextId++;
 	this.parents = []; // streams I depend on
 	this.children = []; // streams that depend on me
 	this.listeners = []; // listeners that get my value when it updates
 	this.value = undefined;
-	this.updater = function() {};
-	this.f = null;
+	this.updater = nop;
 
 	if (initial !== undefined) {
 		this.update(initial);
@@ -774,11 +776,14 @@ function UpdateAction(stream, value) {
 	this.value = value;
 }
 
+// Perform by convention returns true if this action resulted in a
+// direct update action (i.e. stream.newValue was set).
 UpdateAction.prototype.perform = function performUpdate() {
 	if (this.stream.ended()) {
 		throw new Error('cannot update ended stream');
 	}
 	this.stream.newValue = this.value;
+	return true;
 };
 
 UpdateAction.prototype.toString = UpdateAction.prototype.inspect = function() {
@@ -913,11 +918,8 @@ Transaction.prototype.commit = function() {
 		for (var i = 0; i < this.actions.length; i++) {
 			var action = this.actions[i];
 
-			action.perform();
-
-			var s = action.stream;
-
-			if (action instanceof UpdateAction) {
+			if (action.perform()) {
+				var s = action.stream;
 				if (!updatedStreams[s.id]) {
 					updatedStreamsOrdered.push(s);
 					updatedStreams[s.id] = true;
@@ -932,11 +934,16 @@ Transaction.prototype.commit = function() {
 		var streamsToUpdate = updateOrder(updatedStreamsOrdered);
 
 		streamsToUpdate.forEach(function(s) {
-			s.updater.apply(s, s.parents);
+			// Only update if at least one of the parents were updated.
+			if (s.parents.some(hasNewValue)) {
+				s.updater.apply(s, s.parents);
+			}
 		});
 
-		// I wonder if these could be done in the same .forEach()
 		streamsToUpdate.forEach(function(s) {
+			// Only broadcast the new value if this stream was updated,
+			// and delete s.newValue while we're at it; it's no longer
+			// needed.
 			if (hasNewValue(s)) {
 				s.value = s.newValue;
 				delete s.newValue;

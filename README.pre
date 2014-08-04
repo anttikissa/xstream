@@ -384,9 +384,8 @@ You can give a step to be used with the range:
 	// later:
 	// -> 0; 10; 20; 30; 40; 50
 
-Infinite ranges are ok, although for the example to work we have to call
-`end()` to stop the iteration when we like. We'll talk more about .end()
-soon.
+Infinite ranges are ok, although it's a good idea to stop it eventually
+with `end()`.
 
 	var numbers = stream.fromRange(0);
 	numbers.forEach(function(value) {
@@ -397,8 +396,6 @@ soon.
 	});
 	// later:
 	// -> 0; 1; 2; 3; 4; 5
-	// TODO make mktest do this automatically:
-	// no effect
 
 To create an infinite range with a step, just use `Infinity` as the end value:
 
