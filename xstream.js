@@ -174,6 +174,16 @@ Stream.prototype.uniq = function uniq() {
 	return stream.link(this, stream(), uniqUpdater);
 };
 
+// Returns n first elements of a stream
+Stream.prototype.take = function take(n) {
+	return stream.link(this, stream(), function(parent) {
+		if (n-- <= 0) {
+			return this.end();
+		}
+		this.newValue = parent.newValue;
+	}).linkEnds(this);
+};
+
 function reduceUpdater(parent) {
 	if (this.value !== undefined) {
 		this.newValue = this.f(this.value, parent.newValue);

@@ -129,7 +129,7 @@ TODO answer these eventually
   debugger? Probably, didn't check though. Do streams have identities?
   Yes.) TODO write a section "how to debug stream programs"
 
-- Will the API change? (Likely; we're in 0.0.0 right now.)
+- Will the API change? (Likely; we're in 0.0.1 right now.)
 
 - Can I do anything I want with it (you can do many things but the API
   is certainly incomplete. See below.)
@@ -367,6 +367,13 @@ Or make a stream of numbers:
 	numbers.forEach(log);
 	// later:
 	// -> 1; 2; 3; 4; 5; 6; 7; 8; 9; 10
+
+It's often useful to just take a few elements of a stream, by using `take(n)`:
+
+	var s = stream.fromRange(1, 10);
+	var s2 = s.take(5).forEach(log);
+	// later:
+	// -> 1; 2; 3; 4; 5
 
 You can give a step to be used with the range:
 
