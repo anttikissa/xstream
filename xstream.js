@@ -182,15 +182,65 @@ Stream.prototype.withState = function withState(state) {
 	return this;
 };
 
-// Returns n first elements of a stream
+function takeUpdater(parent) {
+	console.log('takeUpdater, parent has value', parent.newValue);
+	if (this.state-- <= 0) {
+		return this.end();
+	}
+	this.newValue = parent.newValue;
+}
+
+// Returns `n` first elements
 Stream.prototype.take = function take(n) {
-	return stream.link(this, stream().withState(n), function(parent) {
-		if (this.state-- <= 0) {
-			return this.end();
-		}
-		this.newValue = parent.newValue;
-	}).linkEnds(this);
+	return stream.link(this, stream().withState(n), takeUpdater)
+		.linkEnds(this);
 };
+
+function skipUpdater(parent) {
+	if (this.state > 0) {
+		this.state--;
+		return;
+	}
+	this.newValue = parent.newValue;
+}
+
+// Leaves out `n` first elements, then returns the rest
+Stream.prototype.skip = function skip(n) {
+	return stream.link(this, stream().withState(n), skipUpdater)
+		.linkEnds(this);
+};
+
+function slidingWindowUpdater(parent) {
+	console.log('slidingWindowUpdater before', this.value);
+	this.newValue = this.value.concat(parent.newValue);
+	while (this.newValue.length > this.state) {
+		this.newValue.shift();
+	}
+	console.log('slidingWindowUpdater after', this.newValue);
+};
+
+// A stream with an array of at most `n` latest values of its parent.
+//
+// Could probably be implemented more cleanly with .reduce()
+Stream.prototype.slidingWindow = function slidingWindow(n) {
+	return stream.link(this, stream().withState(n).withInitialValue([]),
+		slidingWindowUpdater).linkEnds(this);
+};
+
+// Skips `start` elements, then returns elements until the `end`th
+// element.
+//
+// Similar to Array.prototype.slice, except that slice(-n) doesn't 
+// do what it does on an array.  Use `leave(n)` for that.
+Stream.prototype.slice = function slice(start, end) {
+	if (end === undefined) {
+		return this.skip(start);
+	}
+	var skipper = this.skip(start).log('skipper');
+	var taker = skipper.take(end - start).log('taker');
+	return taker;
+//	return this.skip(start).take(4);//.take(end - start);
+}
 
 function reduceUpdater(parent) {
 	if (this.value !== undefined) {

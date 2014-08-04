@@ -1,6 +1,7 @@
 
 # TODO
 
+- REALLY make the tests WORK, now a test can print TOO MUCH and while nothing is expected, everything seems to be fine
 - get rid of starvation with process.nextTick() (do setTimeout() on every 1000th iteration, or something?)
 - make infinite ranges work in the sense that you can do stream.fromRange(0).take(5) and not have it loop forever
 - implement .concat() and .slice() and other array methods. .concat() needs buffering.
@@ -377,6 +378,27 @@ It's often useful to just take a few elements of a stream, by using `take(n)`:
 	// later:
 	// -> 1; 2; 3; 4; 5
 
+Or leave out a few elements with `skip(n)`:
+
+	var s = stream.fromRange(1, 10);
+	var s2 = s.skip(5).forEach(log);
+	// later:
+	// -> 6; 7; 8; 9; 10
+
+`slice(start, end)` is similar to the array's `slice`:
+
+	var s = stream.fromRange(0, 10);
+	var s2 = s.slice(3, 7).forEach(log);
+	// later: 
+	// -> 3; 4; 5; 6
+
+To follow the `n` last values of a stream, use `slidingWindow(n)`:
+
+	var s = stream.fromRange(1, 5);
+	var s2 = s.slidingWindow(3).forEach(log);
+	// later:
+	// -> [ 1 ]; [ 1, 2 ]; [ 1, 2, 3 ]; [ 2, 3, 4 ]; [ 3, 4, 5 ]
+
 You can give a step to be used with the range:
 
 	var numbers = stream.fromRange(0, 50, 10);
@@ -535,6 +557,8 @@ And reduce them, like you would an array:
 A common case of using `reduce` is collecting all values into an array.
 `reduce` gets an optional initial value.  Note that `reduce` only
 produces values whenever the original stream is updated, and therefore
+will not broadcast its initial value unless the original streams ends
+without updating itself once.
 
 	var s = stream.fromValues(1,2,3);
 	var all = s.reduce(function(array, value) {
