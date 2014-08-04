@@ -210,6 +210,14 @@ Stream.prototype.skip = function skip(n) {
 		.linkEnds(this);
 };
 
+Stream.prototype.leave = function leave(n) {
+	var result = stream();
+	this.slidingWindow(n).onEnd(function(values) {
+		result.rewire(stream.fromArray(values));
+	});
+	return result;
+};
+
 function slidingWindowUpdater(parent) {
 	console.log('slidingWindowUpdater before', this.value);
 	this.newValue = this.value.concat(parent.newValue);
@@ -236,10 +244,7 @@ Stream.prototype.slice = function slice(start, end) {
 	if (end === undefined) {
 		return this.skip(start);
 	}
-	var skipper = this.skip(start).log('skipper');
-	var taker = skipper.take(end - start).log('taker');
-	return taker;
-//	return this.skip(start).take(4);//.take(end - start);
+	return this.skip(start).take(end - start);
 }
 
 function reduceUpdater(parent) {
@@ -481,7 +486,7 @@ stream.fromArray = function fromArray(array) {
 stream.fromRange = function fromRange(start, end, step) {
 	var result = stream();
 	result.state = {
-		end: end || Infinity,
+		end: end !== undefined ? end : Infinity,
 		step: step || 1
 	};
 
@@ -599,6 +604,12 @@ stream.speedtest = function speedtest() {
 	setTimeout(function() { counter(reporter('counter')); }, 1000);
 }
 
+// Has stream been updated during this tick or before?
+function hasValue(s) {
+	return mostRecentValue(s) !== undefined;
+}
+
+// Has stream been updated during this tick?
 function hasNewValue(s) {
 	return s.hasOwnProperty('newValue');
 }
@@ -628,7 +639,34 @@ function combineUpdater() {
 	this.newValue = this.f.apply(null, values);
 };
 
+function combineWhenAll2Updater(firstParent, secondParent) {
+	if (hasValue(firstParent) && hasValue(secondParent)) {
+		this.newValue = this.f(
+			mostRecentValue(firstParent),
+			mostRecentValue(secondParent));
+	}
+}
+
+function combineWhenAll3Updater(firstParent, secondParent, thirdParent) {
+	if (hasValue(firstParent) && hasValue(secondParent) && 
+		hasValue(thirdParent)) {
+		this.newValue = this.f(
+			mostRecentValue(firstParent),
+			mostRecentValue(secondParent),
+			mostRecentValue(thirdParent));
+	}
+}
+
+function combineWhenAllUpdater() {
+	if (this.parents.every(hasValue)) {
+		var values = this.parents.map(mostRecentValue);
+		this.newValue = this.f.apply(null, values);
+	}
+};
+
+
 // stream.combine(Stream streams..., f) -> Stream
+// TODO link .ends()
 // TODO document
 stream.combine = function combine() {
 	var parents = toArray(arguments);
@@ -636,6 +674,17 @@ stream.combine = function combine() {
 	var updater = parents.length === 2 ? combine2Updater :
 		parents.length === 3 ? combine3Updater :
 		combineUpdater;
+
+	return stream.link(parents, stream(), updater, f);
+}
+
+// TODO link .ends()
+stream.combineWhenAll = function combineWhenAll() {
+	var parents = toArray(arguments);
+	var f = parents.pop();
+	var updater = parents.length === 2 ? combineWhenAllUpdater :
+		parents.length === 3 ? combineWhenAllUpdater :
+		combineWhenAllUpdater;
 
 	return stream.link(parents, stream(), updater, f);
 }

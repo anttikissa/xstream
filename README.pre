@@ -378,7 +378,7 @@ It's often useful to just take a few elements of a stream, by using `take(n)`:
 	// later:
 	// -> 1; 2; 3; 4; 5
 
-Or leave out a few elements with `skip(n)`:
+Or take all except the first `n` elements with `skip(n)`:
 
 	var s = stream.fromRange(1, 10);
 	var s2 = s.skip(5).forEach(log);
@@ -398,6 +398,17 @@ To follow the `n` last values of a stream, use `slidingWindow(n)`:
 	var s2 = s.slidingWindow(3).forEach(log);
 	// later:
 	// -> [ 1 ]; [ 1, 2 ]; [ 1, 2, 3 ]; [ 2, 3, 4 ]; [ 3, 4, 5 ]
+
+`leave(n)` gives the `n` last values of a stream in an array; alas, it
+cannot know when to start tracking its parent stream, because it doesn't
+know when it's going to end.  Therefore it needs to keep track of the
+previous `n` values (using `slidingWindow`) and turn into a generator
+stream after its parent stream has ended.
+
+	var s = stream.fromRange(1, 10);
+	var s2 = s.leave(5).forEach(log);
+	// later:
+	// -> 6; 7; 8; 9; 10
 
 You can give a step to be used with the range:
 
