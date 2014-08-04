@@ -7,7 +7,7 @@ console.log('Welcome!');
 console.log('This is an interactive shell where you can try out streams.');
 console.log('I have taken the liberty to create a few useful variables for you.');
 console.log('');
-console.log('stream         : require(\'./stream\')');
+console.log('stream         : require(\'./xstream\')');
 console.log('s1             : stream()');
 console.log('s2             : stream()');
 console.log('s3             : stream.combine(s1, s2, function(a, b) { return [a, b]; })');
@@ -34,12 +34,9 @@ context.log = function() {
 	console.log.apply(console, arguments);
 };
 
-context.stream = require('./stream');
+context.stream = require('./xstream');
 context.s1 = context.stream().log('s1');
 context.s2 = context.stream().log('s2');
 context.s3 = context.stream.combine(
 	context.s1, context.s2, function(a, b) { return [a, b]; }).log('s3');
-
-context.s4 = context.stream.from('abc').log('char');
-
 
