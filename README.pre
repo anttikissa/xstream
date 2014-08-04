@@ -164,6 +164,8 @@ From these two properties we can derive a multitude of interesting applications.
 
 Let's take a look at the API:
 
+	// Or, if you're in the browser,
+	// <script src='xstream.js'></script>
 	var stream = require('../xstream');
 	console.log(stream) // -> [object Function]
 
