@@ -174,10 +174,16 @@ Stream.prototype.uniq = function uniq() {
 	return stream.link(this, stream(), uniqUpdater);
 };
 
+// A shorthand to initialize stream.state.
+Stream.prototype.withState = function withState(state) {
+	this.state = state;
+	return this;
+};
+
 // Returns n first elements of a stream
 Stream.prototype.take = function take(n) {
-	return stream.link(this, stream(), function(parent) {
-		if (n-- <= 0) {
+	return stream.link(this, stream().withState(n), function(parent) {
+		if (this.state-- <= 0) {
 			return this.end();
 		}
 		this.newValue = parent.newValue;
@@ -405,8 +411,7 @@ stream.from = function from(first) {
 // Set the the first value in the current transaction and the following
 // values in following transactions.
 stream.fromArray = function fromArray(array) {
-	var result = stream();
-	result.state = array.slice();
+	var result = stream().withState(array.slice());
 
 	result.next = function next() {
 		if (this.state.length === 0) {
