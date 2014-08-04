@@ -164,8 +164,8 @@ From these two properties we can derive a multitude of interesting applications.
 
 Let's take a look at the API:
 
-	var s = require('stream');
-	console.log(s) // -> [object Function]
+	var stream = require('../xstream');
+	console.log(stream) // -> [object Function]
 
 So the main API endpoint is a function. The simplest way to invoke it is
 to call it with no arguments, which creates a stream.  

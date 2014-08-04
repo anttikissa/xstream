@@ -1,5 +1,5 @@
 var util = require('util');
-var stream = require('../stream');
+var stream = require('../xstream');
 
 var consoleId = 1;
 
