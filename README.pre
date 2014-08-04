@@ -1,6 +1,7 @@
 
 # TODO
 
+- Make ./test just run the latest failing test, './test all' run all tests, and './test xxx' run tests matchin xxx. No silliness like minTest, maxTest.
 - REALLY make the tests WORK, now a test can print TOO MUCH and while nothing is expected, everything seems to be fine
 - get rid of starvation with process.nextTick() (do setTimeout() on every 1000th iteration, or something?)
 - make infinite ranges work in the sense that you can do stream.fromRange(0).take(5) and not have it loop forever
