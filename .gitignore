@@ -2,3 +2,4 @@ tmp
 node_modules
 a
 .idea
+dist/xstream.min.js.gz
