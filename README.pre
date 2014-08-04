@@ -1,6 +1,8 @@
 
 # TODO
 
+- get rid of starvation with process.nextTick() (do setTimeout() on every 1000th iteration, or something?)
+- make infinite ranges work in the sense that you can do stream.fromRange(0).take(5) and not have it loop forever
 - implement .concat() and .slice() and other array methods. .concat() needs buffering.
 - just implement the .mergeLatest and friends. See what happens.
 - add .removeListener
