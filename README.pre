@@ -561,6 +561,8 @@ dependency handler is called only once.
 	// A naive implementation would call mul 27 times
 	console.log(mulCount); // -> 3
 
+TODO move more detailed tests to their own file
+
 Sometimes it's useful to 'rewire' streams. `s.rewire(newSource)` makes
 `s` follow the value of `newSource`, without breaking any streams or
 listeners that depend on `s` itself.
@@ -591,6 +593,18 @@ dependencies from the given stream:
 	oldSource.update(5).tick();
 	stream.tick();
 	// no effect
+
+`rewire` also rewires the .ends() streams:
+
+	var s1 = stream();
+	var s2 = stream();
+	s1.onEnd(function(value) { console.log('end 1:', value); });
+	s2.onEnd(function(value) { console.log('end 2:', value); });
+	s2.rewire(s1.map(stream.util.inc));
+	s1.update(123);
+	s1.end();
+	stream.tick();
+	// -> end 1: 123; end 2: 124
 
 Streams can end, which means that they no longer want to broadcast
 values. You can listen to end events by using the stream `s.ends()`,

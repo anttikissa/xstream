@@ -232,7 +232,7 @@ Stream.prototype.rewire = function rewire(newParent) {
 		var parent = this.parents[i];
 		parent.removeChild(this);
 	}
-	return stream.link(newParent, this, rewireUpdater);
+	return stream.link(newParent, this, rewireUpdater).linkEnds(newParent);
 };
 
 // Update value from the most recent value of the master.
@@ -264,11 +264,15 @@ Stream.prototype.toString = function toString() {
 	function showStreams(name, streams) {
 		show(name, '[' + streams.map(function(s) { return 's' + s.id; }).join(', ') + ']');
 	}
+	function showListeners(name, listeners) {
+		show(name, '[' + listeners.map(function(f) { return f.toString(); }).join(', ') + ']');
+	}
 	show('value', this.value);
 	show('newValue', this.newValue);
 	show('state', JSON.stringify(this.state));
 	showStreams('parents', this.parents);
 	showStreams('children', this.children);
+//	showListeners('listeners', this.listeners);
 	return result + ']';
 };
 
