@@ -1,6 +1,11 @@
 
 # TODO
 
+- implement .concat() and .slice() and other array methods. .concat() needs buffering.
+- just implement the .mergeLatest and friends. See what happens.
+- add .removeListener
+- .combineWhenAll (only start to combine once all streams have defined values)
+- pick a silly name ('xstream'?) var stream = require('xstream');
 - a.rewire(b) should also rewire a.ends() to b.ends() (?)
 - Sprinkle assert()s everywhere (strip them out in minimized build)
 - Separate tests properly! Make them run serialized. Or at least make
@@ -65,6 +70,7 @@
   and what's the difference between stream error and transaction error
 - Separate detailed tests out from README
 - Should f have `this` set to resulting node in case of map, combine, etc?
+- make something similar to promises .then() (maybe)
 
 .limit(min, max)
 //	[stream 1 2 3 4 5].limit(2, 4) -> [stream 2 3 4]

@@ -782,6 +782,13 @@ EndAction.prototype.perform = function performEnd() {
 		// push a new action to the action queue.
 		s.endStream.update(mostRecentValue(s));
 	}
+
+	// TODO dump parent-child relations, but only after
+	// dependencies have been sought out
+	// TODO dump listener relations but only after they have been called
+	// with possibly the new value (if 
+	// TODO who dumps the listeners from .ends() streams? should they
+	// .end() as well
 };
 
 EndAction.prototype.toString = EndAction.prototype.inspect = function() {
