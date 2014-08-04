@@ -19,6 +19,13 @@
 var log = console.log.bind(console);
 //var log = function() {};
 
+// Really simple assert
+function assert(what) {
+	if (!what) {
+		throw new Error('assert failed');
+	}
+}
+
 // Convert argument-like object to array
 function toArray(args) {
 	return Array.prototype.slice.apply(args);
@@ -207,6 +214,12 @@ function rewireUpdater(parent) {
 	this.newValue = parent.newValue;
 }
 
+// Remove child from this stream's dependencies.
+Stream.prototype.removeChild = function removeChild(child) {
+	assert(this.children.indexOf(child) !== -1);
+	this.children.splice(this.children.indexOf(child));
+}
+
 // rewire: (Stream parent) -> Stream
 //
 // Unlink `this` from its old parents.
@@ -217,8 +230,7 @@ function rewireUpdater(parent) {
 Stream.prototype.rewire = function rewire(newParent) {
 	for (var i = 0, len = this.parents.length; i < len; i++) {
 		var parent = this.parents[i];
-		// TODO move into .remove()
-		parent.children.splice(parent.children.indexOf(this));
+		parent.removeChild(this);
 	}
 	return stream.link(newParent, this, rewireUpdater);
 };
@@ -759,18 +771,13 @@ function EndAction(stream) {
 }
 
 EndAction.prototype.perform = function performEnd() {
-
 	var s = this.stream;
 	if (s.endStream) {
-		// TODO it should do it within this transaction?
-		// I.e. should modify an ongoing transaction queue?
-		// Is dirty!
+		// This 'update()', unlike all others, will take effect
+		// during the same tick as this EndAction, and it will
+		// push a new action to the action queue.
 		s.endStream.update(mostRecentValue(s));
 	}
-
-//	this.cancelTransactions();
-
-	// TODO
 };
 
 EndAction.prototype.toString = EndAction.prototype.inspect = function() {

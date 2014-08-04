@@ -47,9 +47,9 @@ Or then you could use the operator .mergeStream() to achieve the same:
 		});
 	});
 
-	pairs.mergeStream().forEach(function(value) {
-		console.log(value);
-	});
+	//pairs.mergeStream().forEach(function(value) {
+	//	console.log(value);
+	//});
 //
 //	// ->
 

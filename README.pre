@@ -1,6 +1,8 @@
 
 # TODO
 
+- a.rewire(b) should also rewire a.ends() to b.ends() (?)
+- Sprinkle assert()s everywhere (strip them out in minimized build)
 - Separate tests properly! Make them run serialized. Or at least make
   them totally independent (so that they don't share the same instance of
   `stream`, which makes the transaction queue shared as well)
