@@ -62,7 +62,6 @@ updates but as a means of iteration.
 TODO talk about ticks.
 
 
-
 ## A sketch
 
 ### Simple dependencies: .map, .filter, .combine
