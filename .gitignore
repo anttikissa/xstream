@@ -1,5 +1,8 @@
 tmp
 node_modules
-a
 .idea
 dist/xstream.min.js.gz
+# my quick test code
+a
+a.js
+a.html
