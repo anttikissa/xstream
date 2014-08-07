@@ -1,6 +1,11 @@
 
 # TODO (because this still is mostly for myself)
 
+- need to keep with the same terminology so it seems that I know what
+  I'm doing
+- It might be a good idea to make generators that follow another stream.
+  Its updater() would only be called whenever another stream is updated.  Like
+  a normal link() dependency, but doesn't really depend on the parent
 - Make ./test just run the latest failing test, './test all' run all tests, and './test xxx' run tests matching xxx. No silliness like minTest, maxTest.
 - REALLY make the tests WORK, now a test can print TOO MUCH and while nothing is expected, everything seems to be fine
 - get rid of starvation with process.nextTick() (do setTimeout() on every 1000th iteration, or something?)
@@ -361,7 +366,7 @@ You can convert an array into a stream:
 
 	var numbers = stream.fromArray([1,2,3,4,5]);
 	numbers.forEach(log);
-	//	numbers.onEnd(function(value) { console.log('end'); });
+	// numbers.onEnd(function(value) { console.log('end'); });
 	// later:
 	// -> 1; 2; 3; 4; 5
 
@@ -822,8 +827,6 @@ Ranges work, too:
 	var allIntegers = stream.fromRange(0).forEach(log);
 	stream.tick(4);
 	allIntegers.end(); // prevent stream from ticking indefinitely
-	// hack to force-cancel transactions
-	stream.transaction().actions = [];
 	// -> 0; 1; 2; 3
 
 	// The third argument is the step
@@ -835,8 +838,6 @@ Ranges work, too:
 	stream.tick(6);
 	// -> 0; 2; 4; 6; 8; 10
 	allEvenNumbers.end();
-	// hack to force-cancel transactions
-	stream.transaction().actions = [];
 
 Several other array utilities work, too:
 
@@ -857,13 +858,14 @@ but I figure they might be useful in other contexts, too.
 You can `filter` a stream; the resulting stream only broadcasts the
 value if a predicate returns true.
 
-	var oddNumbers = stream.fromRange(0).filter(function(value) {
+	var numbers = stream.fromRange(1);
+	var oddNumbers = numbers.filter(function(value) {
 		return (value % 2);
 	}).forEach(log);
-	stream.tick(3);
-	// later:
+
+	stream.tick(5);
 	// -> 1; 3; 5
-	oddNumbers.end();
+	numbers.end();
 
 `find` returns a stream whose value is undefined until a value is found
 in the stream, after which it ends immediately. If the original stream

@@ -94,6 +94,8 @@ Stream.prototype.update = function update(value) {
 	return this;
 };
 
+// TODO TODO TODO rethink and rewrite
+//
 // End this stream, causing this.ends() to update with the most recent
 // value of this stream.
 //
@@ -110,6 +112,42 @@ Stream.prototype.update = function update(value) {
 // TODO there's probably a cleaner way to do it
 //
 Stream.prototype.end = function end() {
+	// TODO should be able to call .end() on a generator at any time,
+	// not just within a commit.  There's no (general) way to check if the update
+	// was scheduled by a human operator an automatic .forEach(), so...
+	//
+	// The bad news is that this hack doesn't work, the good news is
+	// that a better solution must be implemented. 
+	//
+	// Consider the case
+	//
+	// var s = fromRange(1);
+	// s.log();
+	// s.tick(); // -> 1
+	// s.end();
+	// s.tick(); // no effect
+	//
+	// What should happen?
+	//
+	// Then consider
+	//
+	// var s = fromRange(1);
+	// s.log();
+	// s.tick(5); // -> 1; 2; 3; 4; 5
+	// s.end();
+	// s.tick(); // no effect
+	//
+	// Now consider
+	//
+	// var s = fromRange(1);
+	// s.forEach(function(value) {
+	//   console.log(value);
+	//   if (value === 5) {
+	//     s.end();
+	//   }
+	// });
+	// s.tick(5); // -> 1; 2; 3; 4; 5
+	// s.tick(); // no effect
 	if (stream.withinCommit) {
 		this.cancelTransactions();
 	}
@@ -419,6 +457,13 @@ var stream = function stream(initial) {
 // Will updates automatically schedule a commit?
 stream.autoCommit = true;
 
+stream.ticks = stream();
+var i = 0;
+stream.ticks.updater = function() {
+	console.log('tick!', i);
+	this.newValue = i++;
+};
+
 // HACK HACK HACK
 // To enable .end() to work correctly when it's called
 // during the commit phase
@@ -483,6 +528,18 @@ stream.fromArray = function fromArray(array) {
 	result.next();
 
 	return result.forEach(result.next);
+};
+
+function countUpdater() {
+	if (this.ended()) {
+		return;
+	}
+	this.newValue = this.state++;
+	stream.ticks.update();
+};
+
+stream.count = function(array) {
+	return stream.link(stream.ticks, stream().withState(0), countUpdater);
 };
 
 stream.fromRange = function fromRange(start, end, step) {
@@ -907,7 +964,7 @@ EndAction.prototype.perform = function performEnd() {
 	// TODO dump parent-child relations, but only after
 	// dependencies have been sought out
 	// TODO dump listener relations but only after they have been called
-	// with possibly the new value (if 
+	// with possibly the new value 
 	// TODO who dumps the listeners from .ends() streams? should they
 	// .end() as well
 };
@@ -1008,6 +1065,8 @@ function updateOrder(nodes) {
 Transaction.prototype.commit = function() {
 	stream.withinCommit = true;
 
+	stream.ticks.update();
+
 	try {
 		if (this.cancel) {
 			this.cancel();
@@ -1036,7 +1095,8 @@ Transaction.prototype.commit = function() {
 
 		streamsToUpdate.forEach(function(s) {
 			// Only update if at least one of the parents were updated.
-			if (s.parents.some(hasNewValue)) {
+			// OR if it's stream.ticks. Ugly special case?
+			if (s.parents.some(hasNewValue) || s === stream.ticks) {
 				s.updater.apply(s, s.parents);
 			}
 		});

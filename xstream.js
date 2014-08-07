@@ -19,6 +19,10 @@
 var log = console.log.bind(console);
 //var log = function() {};
 
+// A function that does nothing.
+function nop() {
+}
+
 // Really simple assert
 function assert(what) {
 	if (!what) {
@@ -38,9 +42,6 @@ function access(selector) {
 	}
 	var key = selector.slice(1);
 	return function(o) { return o[key]; };
-}
-
-function nop() {
 }
 
 function Stream(initial) {
@@ -149,6 +150,7 @@ Stream.prototype.end = function end() {
 	if (stream.withinCommit) {
 		this.cancelTransactions();
 	}
+
 	stream.transaction().end(this);
 	return this;
 };
@@ -158,7 +160,7 @@ Stream.prototype.end = function end() {
 // I.e. is it safe to call .update() on this stream
 Stream.prototype.ended = function ended() {
 	return this.endStream && mostRecentValue(this.endStream) !== undefined;
-}
+};
 
 function mapUpdater(parent) {
 	this.newValue = this.f(parent.newValue);
@@ -221,7 +223,6 @@ Stream.prototype.withState = function withState(state) {
 };
 
 function takeUpdater(parent) {
-	console.log('takeUpdater, parent has value', parent.newValue);
 	if (this.state-- <= 0) {
 		return this.end();
 	}
@@ -257,12 +258,10 @@ Stream.prototype.leave = function leave(n) {
 };
 
 function slidingWindowUpdater(parent) {
-	console.log('slidingWindowUpdater before', this.value);
 	this.newValue = this.value.concat(parent.newValue);
 	while (this.newValue.length > this.state) {
 		this.newValue.shift();
 	}
-	console.log('slidingWindowUpdater after', this.newValue);
 };
 
 // A stream with an array of at most `n` latest values of its parent.
@@ -325,11 +324,23 @@ function rewireUpdater(parent) {
 	this.newValue = parent.newValue;
 }
 
-// Remove child from this stream's dependencies.
+// TODO terminology below;
+// remove vs. detach, dependencies vs. parents/children
+//
+// Remove a child from this stream's dependencies.
 Stream.prototype.removeChild = function removeChild(child) {
 	assert(this.children.indexOf(child) !== -1);
-	this.children.splice(this.children.indexOf(child));
+	this.children.splice(this.children.indexOf(child), 1);
 }
+
+// Remove all incoming dependencies
+Stream.prototype.detachFromParents = function detachFromParents() {
+	for (var i = 0, len = this.parents.length; i < len; i++) {
+		this.parents[i].removeChild(this);
+	}
+	this.parents = [];
+};
+
 
 // rewire: (Stream parent) -> Stream
 //
@@ -464,6 +475,12 @@ stream.withinCommit = false;
 // Debug functions refer to them as 's1', 's2', and so on.
 stream.nextId = 1;
 
+stream.currentTick = 0;
+stream.ticks = stream();
+stream.ticks.updater = function() {
+	this.newValue = stream.currentTick++;
+};
+
 // Get the current transaction or create one.
 stream.transaction = function transaction() {
 	return stream.tx || (stream.tx = new Transaction());
@@ -499,6 +516,19 @@ stream.from = function from(first) {
 	return stream.fromValues.apply(stream, arguments);
 }
 
+function fromArrayUpdater() {
+	if (this.ended()) {
+		return;
+	}
+	if (this.state.length === 0) {
+		return this.end();
+	}
+
+	this.newValue = this.state.shift();
+
+	stream.ticks.update();
+}
+
 // Make a stream from an array.
 //
 // stream.fromArray([Object]) -> Stream
@@ -506,39 +536,50 @@ stream.from = function from(first) {
 // Set the the first value in the current transaction and the following
 // values in following transactions.
 stream.fromArray = function fromArray(array) {
-	var result = stream().withState(array.slice());
-
-	result.next = function next() {
-		if (this.state.length === 0) {
-			return this.end();
-		}
-
-		this.update(this.state.shift());
-	}
-
-	result.next();
-
-	return result.forEach(result.next);
+	return stream.link(
+		stream.ticks,
+		stream().withState(array.slice()),
+		fromArrayUpdater);
 };
 
+function countUpdater() {
+	if (this.ended()) {
+		return;
+	}
+
+	this.newValue = this.state++;
+	stream.ticks.update();
+};
+
+stream.count = function(array) {
+	return stream.link(stream.ticks, stream().withState(0), countUpdater);
+};
+
+function fromRangeUpdater() {
+	if (this.ended()) {
+		return;
+	}
+	
+	if (this.value + this.state.step > this.state.end) {
+		return this.end();
+	}
+
+	this.newValue = this.value + this.state.step;
+
+	stream.ticks.update();
+}
+
 stream.fromRange = function fromRange(start, end, step) {
-	var result = stream();
-	result.state = {
+	var state = {
 		end: end !== undefined ? end : Infinity,
 		step: step || 1
 	};
 
-	result.next = function next() {
-		if (this.value + this.state.step > this.state.end) {
-			return this.end();
-		}
-
-		this.update(this.value + this.state.step);
-	};
-
-	result.update(start);
-
-	return result.forEach(result.next);
+	// TODO missing first step
+	return stream.link(
+		stream.ticks,
+		stream().withInitialValue(start - state.step).withState(state),
+		fromRangeUpdater);
 }
 
 // Make a stream from a list of values.
@@ -915,13 +956,15 @@ function UpdateAction(stream, value) {
 
 // Perform by convention returns true if this action resulted in a
 // direct update action (i.e. stream.newValue was set).
-UpdateAction.prototype.perform = function performUpdate() {
+UpdateAction.prototype.preUpdate = function preUpdate() {
 	if (this.stream.ended()) {
 		throw new Error('cannot update ended stream');
 	}
 	this.stream.newValue = this.value;
 	return true;
 };
+
+UpdateAction.prototype.postUpdate = nop;
 
 UpdateAction.prototype.toString = UpdateAction.prototype.inspect = function() {
 	return 'update(s' + this.stream.id + ', ' + this.value + ')';
@@ -931,21 +974,23 @@ function EndAction(stream) {
 	this.stream = stream;
 }
 
-EndAction.prototype.perform = function performEnd() {
+EndAction.prototype.preUpdate = function preUpdate() {
 	var s = this.stream;
-	if (s.endStream) {
-		// This 'update()', unlike all others, will take effect
-		// during the same tick as this EndAction, and it will
-		// push a new action to the action queue.
-		s.endStream.update(mostRecentValue(s));
-	}
+	// This 'update()', unlike all others, will take effect
+	// during the same tick as this EndAction, and it will
+	// push a new action to the action queue.
+	s.ends().update(mostRecentValue(s));
 
 	// TODO dump parent-child relations, but only after
 	// dependencies have been sought out
 	// TODO dump listener relations but only after they have been called
-	// with possibly the new value (if 
+	// with possibly the new value 
 	// TODO who dumps the listeners from .ends() streams? should they
 	// .end() as well
+};
+
+EndAction.prototype.postUpdate = function postUpdate() {
+	this.stream.detachFromParents();
 };
 
 EndAction.prototype.toString = EndAction.prototype.inspect = function() {
@@ -1044,6 +1089,11 @@ function updateOrder(nodes) {
 Transaction.prototype.commit = function() {
 	stream.withinCommit = true;
 
+	var tick = stream.currentTick;
+
+	// Ensure that stream.ticks is always in the update queue.
+	stream.ticks.update();
+
 	try {
 		if (this.cancel) {
 			this.cancel();
@@ -1055,7 +1105,7 @@ Transaction.prototype.commit = function() {
 		for (var i = 0; i < this.actions.length; i++) {
 			var action = this.actions[i];
 
-			if (action.perform()) {
+			if (action.preUpdate()) {
 				var s = action.stream;
 				if (!updatedStreams[s.id]) {
 					updatedStreamsOrdered.push(s);
@@ -1072,7 +1122,8 @@ Transaction.prototype.commit = function() {
 
 		streamsToUpdate.forEach(function(s) {
 			// Only update if at least one of the parents were updated.
-			if (s.parents.some(hasNewValue)) {
+			// OR if it's stream.ticks. Ugly special case?
+			if (s.parents.some(hasNewValue) || s === stream.ticks) {
 				s.updater.apply(s, s.parents);
 			}
 		});
@@ -1087,9 +1138,16 @@ Transaction.prototype.commit = function() {
 				s.broadcast();
 			}
 		});
+
+		for (var i = 0; i < this.actions.length; i++) {
+			var action = this.actions[i];
+			action.postUpdate();
+		}
+
 	} finally {
 		// In case of emergency, dump the whole transaction queue
 		if (stream.tx === this) {
+			console.log('TICK ' + tick + ': deleting tx in finally');
 			delete stream.tx;
 		}
 		stream.withinCommit = false;

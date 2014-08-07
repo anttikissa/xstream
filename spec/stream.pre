@@ -41,20 +41,26 @@ prematurely:
 	s.leave(5).forEach(log);
 	// no effect
 
-`leave(n)` is `n` + 1 ticks behind its parent stream.
+`leave(n)` is `n` (+ X -- find out why!) ticks behind its parent stream.
 
-	// TODO probably it should be just `n` ticks.  But that would be harder.
 	var timer = stream.fromRange(0, 6);
 	var parent = stream.fromRange(0, 3);
 	var leftovers = parent.leave(2);
+	parent.onEnd(function() {
+		console.log('[' + timer.value + ': parent end]')
+	});
+	leftovers.onEnd(function() {
+		console.log('[' + timer.value + ': leftovers end]');
+	});
 
 	stream.combineWhenAll(
 		timer, parent, stream.merge(stream('?'), leftovers),
 		function(time, p, l) {
 		console.log('[' + time + ': ' + p + ' ' + l + ']');
 	});
-	// later:
-	// -> [0: 0 ?]; [1: 1 ?]; [2: 2 ?]; [3: 3 ?]; [4: 3 ?]; [5: 3 2]; [6: 3 3]
+	stream.tick(10);
+	// TODO figure out what's wrong with this!
+	// -> [0: 0 ?]; [1: 1 ?]; [2: 2 ?]; [3: 3 ?]; [4: 3 ?]; [5: 3 ?]; [5: parent end]; [6: 3 2]; [6: 3 3]; [6: leftovers end]
 
 Streams' `update()` should not be called if none of their parents were updated:
 
