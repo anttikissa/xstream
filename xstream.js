@@ -539,7 +539,7 @@ stream.fromArray = function fromArray(array) {
 	return stream.link(
 		stream.ticks,
 		stream().withState(array.slice()),
-		fromArrayUpdater);
+		fromArrayUpdater).update();
 };
 
 function countUpdater() {
@@ -552,7 +552,7 @@ function countUpdater() {
 };
 
 stream.count = function(array) {
-	return stream.link(stream.ticks, stream().withState(0), countUpdater);
+	return stream.link(stream.ticks, stream().withState(0), countUpdater).update();
 };
 
 function fromRangeUpdater() {
@@ -579,7 +579,7 @@ stream.fromRange = function fromRange(start, end, step) {
 	return stream.link(
 		stream.ticks,
 		stream().withInitialValue(start - state.step).withState(state),
-		fromRangeUpdater);
+		fromRangeUpdater).update();
 }
 
 // Make a stream from a list of values.
@@ -1056,6 +1056,7 @@ function updateOrder(nodes) {
 	});
 
 	function removeNode(nodeKey) {
+		assert(nodeKey);
 		var node = allNodes[nodeKey];
 		node.children.forEach(function(child) {
 			parentCounts[child.id]--;
