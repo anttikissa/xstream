@@ -1040,8 +1040,19 @@ function updateOrder(nodes) {
 	}
 
 	nodes.forEach(function(node) {
-		parentCounts[node.id] = 0;
+		// This assumption is false if someone has update()d a node
+		// that has parents.  We used to assume that, but it's no longer
+		// true now that we have generators that can have parents and
+		// be update()d at the same time.
+//		parentCounts[node.id] = 0;
 		findNodesToUpdate(node);
+	});
+
+	// If we didn't find a parent count with findNodesToUpdate, it's zero
+	nodes.forEach(function(node) {
+		if (parentCounts[node.id] === undefined) {
+			parentCounts[node.id] = 0;
+		}
 	});
 
 	function removeNode(nodeKey) {
