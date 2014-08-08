@@ -117,7 +117,8 @@ args.forEach(function(filename) {
 });
 
 var testJs = fs.readFileSync('misc/test-prelude.js', 'utf8') +
-	testLines.join('\n');
+	testLines.join('\n') +
+	'\n})();\n';
 
 console.log(testJs);
 

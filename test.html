@@ -1,0 +1,23 @@
+<script>var module = { exports: {} }</script>
+<script src='xstream.js'></script>
+<script>
+	var stream = module.exports;
+	var global = window;
+	function require(it) {
+		if (it === 'util') {
+			return {
+				// poor man's util.format
+				format: function(it) {
+					return String(it);
+				}
+			}
+		}
+		return stream;
+	}
+	var process = {
+		exit: function(code) {
+			throw new Error('exit ' + code);
+		}
+	}
+</script>
+<script src='tmp/test.js'></script>

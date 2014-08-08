@@ -3,6 +3,7 @@ var stream = require('../xstream');
 
 var consoleId = 1;
 
+(function() {
 var console = function(test) {
 	return (function(origConsole) {
 		return {

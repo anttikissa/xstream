@@ -575,7 +575,6 @@ stream.fromRange = function fromRange(start, end, step) {
 		step: step || 1
 	};
 
-	// TODO missing first step
 	return stream.link(
 		stream.ticks,
 		stream().withInitialValue(start - state.step).withState(state),
