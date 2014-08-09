@@ -533,7 +533,7 @@ stream.from = function from(first) {
 	return stream.fromValues.apply(stream, arguments);
 }
 
-function generatorUpdater() {
+function forUpdater() {
 	if (this.ended()) {
 		return;
 	}
@@ -580,7 +580,7 @@ stream.for = function(initialState, f, ended) {
 	var result = stream.link(
 		stream.ticks,
 		stream().withState(initialState),
-		generatorUpdater,
+		forUpdater,
 		f);
 
 	if (ended) {
