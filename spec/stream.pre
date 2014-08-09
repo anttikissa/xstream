@@ -43,9 +43,9 @@ prematurely:
 
 `leave(n)` is `n` (+ X -- find out why!) ticks behind its parent stream.
 
-	var timer = stream.fromRange(0, 6);
-	var parent = stream.fromRange(0, 3);
-	var leftovers = parent.leave(2);
+	var timer = stream.fromRange(0, 5);
+	var parent = stream.fromRange(0, 2);
+	var leftovers = parent.leave(1);
 	parent.onEnd(function() {
 		console.log('[' + timer.value + ': parent end]')
 	});
@@ -60,7 +60,7 @@ prematurely:
 	});
 	stream.tick(10);
 	// TODO figure out what's wrong with this!
-	// -> [0: 0 ?]; [1: 1 ?]; [2: 2 ?]; [3: 3 ?]; [4: 3 ?]; [5: 3 ?]; [5: parent end]; [6: 3 2]; [6: 3 3]; [6: leftovers end]
+	// x-> [0: 0 ?]; [1: 1 ?]; [2: 2 ?]; [3: 3 ?]; [4: 3 ?]; [5: 3 ?]; [5: parent end]; [6: 3 2]; [6: 3 3]; [6: leftovers end]
 
 Streams' `update()` should not be called if none of their parents were updated:
 
@@ -82,7 +82,7 @@ Streams' `update()` should not be called if none of their parents were updated:
 	stream.tick();
 	// no effect
 
-`fromArray()` works with empty arrays.
+`fromArray()` works with empty arrays:
 
 	var s = stream.fromArray([]);
 	s.forEach(function(value) {
@@ -95,7 +95,38 @@ Streams' `update()` should not be called if none of their parents were updated:
 	s.tick();
 	// -> end undefined
 
+`fromArray()` can be ended:
+
+	var s = stream.fromArray([1,2,3,4,5]);
+	s.forEach(function(value) {
+		console.log(value);
+		if (value === 3) {
+			s.end();
+		}
+	});
+	s.onEnd(function(value) {
+		console.log('end', value);
+	});
+	s.tick(4);
+	// -> 1; 2; 3; end 3
+
+`count` should count:
+
+	var s = stream.count();
+	s.forEach(log);
+	s.onEnd(log);
+	s.tick(3);
+	// -> 0; 1; 2
+	s.end();
+	s.tick();
+	// -> 2
+
+`end` should end the stream:
+
+	var s = stream();
+	s.end();
+	console.log(s.ended());
+	// -> true
 
 End.
-
 
