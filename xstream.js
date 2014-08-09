@@ -632,11 +632,12 @@ function fromRangeUpdater() {
 		return;
 	}
 	
-	if (this.value + this.state.step > this.state.end) {
+	if (this.state.current > this.state.end) {
 		return this.end();
 	}
 
-	this.newValue = this.value + this.state.step;
+	this.newValue = this.state.current;
+	this.state.current += this.state.step;
 
 	stream.ticks.update();
 }
@@ -644,12 +645,12 @@ function fromRangeUpdater() {
 stream.fromRange = function fromRange(start, end, step) {
 	end = end !== undefined ? end : Infinity;
 	step = step || 1;
-	var state = { end: end, step: step };
+	var state = { current: start, end: end, step: step };
 
 	// TODO make this into a generator
 	return stream.link(
 		stream.ticks,
-		stream().withInitialValue(start - state.step).withState(state),
+		stream().withState(state),
 		fromRangeUpdater).update();
 }
 
