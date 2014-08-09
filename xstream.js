@@ -452,7 +452,7 @@ Stream.prototype.ends = function ends() {
 
 // Shorthand
 Stream.prototype.onEnd = function onEnd(f) {
-	this.ends().forEach(f);
+	this.ends().forEach(f.bind(this));
 };
 
 //
