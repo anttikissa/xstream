@@ -562,6 +562,20 @@ function generatorUpdater() {
 //   function() { return state <= 5; }).log();
 // // -> 1; 2; 3; 4; 5
 //
+// Also consider renaming this 'for' and making it:
+//
+//   for(initial, condition, nextValue)
+//
+// which is the same as
+//
+//   generator(initial, nextValue, !condition)
+//
+// How about .while(), .do() then?
+//
+// It would make sense, then, to save `condition` in `this.condition`.
+// Probably it would be a saner solution than overriding `.ended`,
+// anyway.
+//
 stream.generator = function generator(initialState, f, ended) {
 	var result = stream.link(
 		stream.ticks,
