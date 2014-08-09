@@ -1,6 +1,8 @@
 
 # TODO (because this still is mostly for myself)
 
+- think of what should happen for generators when .end() is called?
+  Maybe .updater (or possibly .ended?) should be replaced?
 - consider the possibility of calling .end() at the _last_ iteration of 
   generators, so that the .onEnd() handler will be called on the next tick.
   This could be cleaner (in some sense)

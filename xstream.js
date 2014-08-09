@@ -159,7 +159,8 @@ Stream.prototype.end = function end() {
 //
 // I.e. is it safe to call .update() on this stream
 Stream.prototype.ended = function ended() {
-	return this.endStream && mostRecentValue(this.endStream) !== undefined;
+	// This is ugly, and not even correct. TODO FIXME
+	return !!this.endStream && mostRecentValue(this.endStream) !== undefined;
 };
 
 function mapUpdater(parent) {
@@ -461,6 +462,16 @@ Stream.prototype.onEnd = function onEnd(f) {
 	this.ends().forEach(f.bind(this));
 };
 
+// End stream when 'value' encountered
+Stream.prototype.endWhen = function(value) {
+	this.forEach(function(v) {
+		if (v === value) {
+			this.end();
+		}
+	});
+	return this;
+};
+
 //
 // The visible part of the library is the `stream` function,
 // which creates a stream.
@@ -536,6 +547,52 @@ function generatorUpdater() {
 	stream.ticks.update();
 }
 
+// Return a generator stream.
+//
+// initialState: set to resulting stream's .state
+// f: called on each tick. Should modify this.state and return the next
+// value.
+// ended: inspect this.state to see if the stream has ended.  
+//
+// As an example, a counter that counts from 1 to 5:
+//
+// stream.generator(
+//   1,
+//   function() { return this.state++; },
+//   function() { return state <= 5; }).log();
+// // -> 1; 2; 3; 4; 5
+//
+stream.generator = function generator(initialState, f, ended) {
+	var result = stream.link(
+		stream.ticks,
+		stream().withState(initialState),
+		generatorUpdater,
+		f);
+
+	if (ended) {
+		// TODO VERY unclean. Goes against all principles of
+		// transparency ('ended' can't be retrieved from the resulting
+		// object directly), duplicates code, etc.
+		// Get rid of this hack!
+		// See Stream.prototype.ended(), too.
+		result.ended = function() {
+			if (this.endStream && mostRecentValue(this.endStream) !== undefined)
+				return true;
+			return ended.apply(this);
+		}
+	}
+
+	// 'Kickstart' the generator by an update, or by an end
+	// if it's ended already
+	if (result.ended()) {
+		result.end();
+	} else {
+		result.update();
+	}
+
+	return result;
+};
+
 // Make a stream from an array.
 //
 // stream.fromArray([Object]) -> Stream
@@ -543,40 +600,17 @@ function generatorUpdater() {
 // Set the the first value in the current transaction and the following
 // values in following transactions.
 stream.fromArray = function fromArray(array) {
-
-	var result = stream.link(
-		stream.ticks,
-		stream().withState(array.slice()),
-		generatorUpdater);
-
-	// Guaranteed to be only called when .ended() is false
-	result.f = function() {
-		return this.state.shift();
-	};
-
-	result.ended = function() {
-		return (this.state.length === 0);
-	}
-
-	if (result.ended())
-		result.end();
-	else
-		result.update();
-
-	return result;
+	return stream.generator(
+		array.slice(),
+		function() { return this.state.shift(); },
+		function() { return this.state.length === 0; });
 };
 
-function countUpdater() {
-	if (this.ended()) {
-		return;
-	}
-
-	this.newValue = this.state++;
-	stream.ticks.update();
-};
-
-stream.count = function() {
-	return stream.link(stream.ticks, stream().withState(0), countUpdater).update();
+// Count numbers from 'initial'.
+stream.count = function(initial) {
+	return stream.generator(
+		initial || 0,
+		function() { return this.state++; });
 };
 
 function fromRangeUpdater() {
@@ -594,11 +628,11 @@ function fromRangeUpdater() {
 }
 
 stream.fromRange = function fromRange(start, end, step) {
-	var state = {
-		end: end !== undefined ? end : Infinity,
-		step: step || 1
-	};
+	end = end !== undefined ? end : Infinity;
+	step = step || 1;
+	var state = { end: end, step: step };
 
+	// TODO make this into a generator
 	return stream.link(
 		stream.ticks,
 		stream().withInitialValue(start - state.step).withState(state),

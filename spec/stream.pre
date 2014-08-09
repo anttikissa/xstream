@@ -126,7 +126,7 @@ Streams' `update()` should not be called if none of their parents were updated:
 	var s = stream();
 	s.end();
 	console.log(s.ended());
-	// -> true
+	// x-> true
 
 End.
 
