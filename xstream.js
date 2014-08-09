@@ -576,7 +576,7 @@ function generatorUpdater() {
 // Probably it would be a saner solution than overriding `.ended`,
 // anyway.
 //
-stream.generator = function generator(initialState, f, ended) {
+stream.for = function(initialState, f, ended) {
 	var result = stream.link(
 		stream.ticks,
 		stream().withState(initialState),
@@ -614,7 +614,7 @@ stream.generator = function generator(initialState, f, ended) {
 // Set the the first value in the current transaction and the following
 // values in following transactions.
 stream.fromArray = function fromArray(array) {
-	return stream.generator(
+	return stream.for(
 		array.slice(),
 		function() { return this.state.shift(); },
 		function() { return this.state.length === 0; });
@@ -622,7 +622,7 @@ stream.fromArray = function fromArray(array) {
 
 // Count numbers from 'initial'.
 stream.count = function(initial) {
-	return stream.generator(
+	return stream.for(
 		initial || 0,
 		function() { return this.state++; });
 };
@@ -631,7 +631,7 @@ stream.fromRange = function fromRange(start, end, step) {
 	end = end !== undefined ? end : Infinity;
 	step = step || 1;
 
-	return stream.generator(
+	return stream.for(
 		{ current: start, end: end, step: step },
 		function() {
 			var current = this.state.current;
