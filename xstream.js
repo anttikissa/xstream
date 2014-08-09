@@ -522,7 +522,7 @@ stream.from = function from(first) {
 	return stream.fromValues.apply(stream, arguments);
 }
 
-function fromArrayUpdater() {
+function generatorUpdater() {
 	if (this.ended()) {
 		return;
 	}
@@ -547,7 +547,7 @@ stream.fromArray = function fromArray(array) {
 	var result = stream.link(
 		stream.ticks,
 		stream().withState(array.slice()),
-		fromArrayUpdater);
+		generatorUpdater);
 
 	// Guaranteed to be only called when .ended() is false
 	result.f = function() {
