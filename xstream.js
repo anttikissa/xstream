@@ -23,6 +23,10 @@ var log = console.log.bind(console);
 function nop() {
 }
 
+function alwaysTrue() {
+	return true;
+}
+
 // Really simple assert
 function assert(what) {
 	if (!what) {
@@ -562,14 +566,6 @@ function forUpdater() {
 //   function() { return state <= 5; }).log();
 // // -> 1; 2; 3; 4; 5
 //
-// Also consider renaming this 'for' and making it:
-//
-//   for(initial, condition, nextValue)
-//
-// which is the same as
-//
-//   generator(initial, nextValue, !condition)
-//
 // How about .while(), .do() then?
 //
 // It would make sense, then, to save `condition` in `this.condition`.
@@ -607,6 +603,18 @@ stream.for = function(initialState, condition, f) {
 	return result;
 };
 
+stream.loop = function loop(initialState, f) {
+	return stream.for(initialState, alwaysTrue, f);
+};
+
+// Count numbers from 'initial'.
+stream.count = function(initial) {
+	return stream.loop(
+		initial || 0,
+		function() { return this.state++; }
+		);
+};
+
 // Make a stream from an array.
 //
 // stream.fromArray([Object]) -> Stream
@@ -618,15 +626,6 @@ stream.fromArray = function fromArray(array) {
 		array.slice(),
 		function() { return this.state.length; },
 		function() { return this.state.shift(); }
-		);
-};
-
-// Count numbers from 'initial'.
-stream.count = function(initial) {
-	return stream.for(
-		initial || 0,
-		undefined, // TODO
-		function() { return this.state++; }
 		);
 };
 
