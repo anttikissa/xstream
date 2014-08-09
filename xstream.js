@@ -576,14 +576,14 @@ function forUpdater() {
 // Probably it would be a saner solution than overriding `.ended`,
 // anyway.
 //
-stream.for = function(initialState, f, ended) {
+stream.for = function(initialState, condition, f) {
 	var result = stream.link(
 		stream.ticks,
 		stream().withState(initialState),
 		forUpdater,
 		f);
 
-	if (ended) {
+	if (condition) {
 		// TODO VERY unclean. Goes against all principles of
 		// transparency ('ended' can't be retrieved from the resulting
 		// object directly), duplicates code, etc.
@@ -592,7 +592,7 @@ stream.for = function(initialState, f, ended) {
 		result.ended = function() {
 			if (this.endStream && mostRecentValue(this.endStream) !== undefined)
 				return true;
-			return ended.apply(this);
+			return condition.apply(this);
 		}
 	}
 
@@ -616,15 +616,18 @@ stream.for = function(initialState, f, ended) {
 stream.fromArray = function fromArray(array) {
 	return stream.for(
 		array.slice(),
-		function() { return this.state.shift(); },
-		function() { return this.state.length === 0; });
+		function() { return this.state.length === 0; },
+		function() { return this.state.shift(); }
+		);
 };
 
 // Count numbers from 'initial'.
 stream.count = function(initial) {
 	return stream.for(
 		initial || 0,
-		function() { return this.state++; });
+		undefined, // TODO
+		function() { return this.state++; }
+		);
 };
 
 stream.fromRange = function fromRange(start, end, step) {
@@ -634,13 +637,14 @@ stream.fromRange = function fromRange(start, end, step) {
 	return stream.for(
 		{ current: start, end: end, step: step },
 		function() {
+			return this.state.current > this.state.end;
+		},
+		function() {
 			var current = this.state.current;
 			this.state.current += this.state.step;
 			return current;
-		},
-		function() {
-			return this.state.current > this.state.end;
-		});
+		}
+		);
 }
 
 // Make a stream from a list of values.
