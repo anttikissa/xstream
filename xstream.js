@@ -627,31 +627,20 @@ stream.count = function(initial) {
 		function() { return this.state++; });
 };
 
-function fromRangeUpdater() {
-	if (this.ended()) {
-		return;
-	}
-	
-	if (this.state.current > this.state.end) {
-		return this.end();
-	}
-
-	this.newValue = this.state.current;
-	this.state.current += this.state.step;
-
-	stream.ticks.update();
-}
-
 stream.fromRange = function fromRange(start, end, step) {
 	end = end !== undefined ? end : Infinity;
 	step = step || 1;
-	var state = { current: start, end: end, step: step };
 
-	// TODO make this into a generator
-	return stream.link(
-		stream.ticks,
-		stream().withState(state),
-		fromRangeUpdater).update();
+	return stream.generator(
+		{ current: start, end: end, step: step },
+		function() {
+			var current = this.state.current;
+			this.state.current += this.state.step;
+			return current;
+		},
+		function() {
+			return this.state.current > this.state.end;
+		});
 }
 
 // Make a stream from a list of values.

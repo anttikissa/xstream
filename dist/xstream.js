@@ -564,6 +564,20 @@ function generatorUpdater() {
 //   function() { return state <= 5; }).log();
 // // -> 1; 2; 3; 4; 5
 //
+// Also consider renaming this 'for' and making it:
+//
+//   for(initial, condition, nextValue)
+//
+// which is the same as
+//
+//   generator(initial, nextValue, !condition)
+//
+// How about .while(), .do() then?
+//
+// It would make sense, then, to save `condition` in `this.condition`.
+// Probably it would be a saner solution than overriding `.ended`,
+// anyway.
+//
 stream.generator = function generator(initialState, f, ended) {
 	var result = stream.link(
 		stream.ticks,
@@ -615,30 +629,21 @@ stream.count = function(initial) {
 		function() { return this.state++; });
 };
 
-function fromRangeUpdater() {
-	if (this.ended()) {
-		return;
-	}
-	
-	if (this.value + this.state.step > this.state.end) {
-		return this.end();
-	}
-
-	this.newValue = this.value + this.state.step;
-
-	stream.ticks.update();
-}
-
 stream.fromRange = function fromRange(start, end, step) {
 	end = end !== undefined ? end : Infinity;
 	step = step || 1;
-	var state = { end: end, step: step };
+	var state = { current: start, end: end, step: step };
 
-	// TODO make this into a generator
-	return stream.link(
-		stream.ticks,
-		stream().withInitialValue(start - state.step).withState(state),
-		fromRangeUpdater).update();
+	return stream.generator(
+		state,
+		function() {
+			var current = this.state.current;
+			this.state.current += this.state.step;
+			return current;
+		},
+		function() {
+			return this.state.current > this.state.end;
+		});
 }
 
 // Make a stream from a list of values.
