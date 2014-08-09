@@ -592,7 +592,7 @@ stream.for = function(initialState, condition, f) {
 		result.ended = function() {
 			if (this.endStream && mostRecentValue(this.endStream) !== undefined)
 				return true;
-			return condition.apply(this);
+			return !condition.apply(this);
 		}
 	}
 
@@ -616,7 +616,7 @@ stream.for = function(initialState, condition, f) {
 stream.fromArray = function fromArray(array) {
 	return stream.for(
 		array.slice(),
-		function() { return this.state.length === 0; },
+		function() { return this.state.length; },
 		function() { return this.state.shift(); }
 		);
 };
@@ -637,7 +637,7 @@ stream.fromRange = function fromRange(start, end, step) {
 	return stream.for(
 		{ current: start, end: end, step: step },
 		function() {
-			return this.state.current > this.state.end;
+			return this.state.current <= this.state.end;
 		},
 		function() {
 			var current = this.state.current;
