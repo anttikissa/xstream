@@ -82,6 +82,20 @@ Streams' `update()` should not be called if none of their parents were updated:
 	stream.tick();
 	// no effect
 
+`fromArray()` works with empty arrays.
+
+	var s = stream.fromArray([]);
+	s.forEach(function(value) {
+		console.log('got value', value);
+		throw new Error('not called');
+	});
+	s.onEnd(function(value) {
+		console.log('end', value);
+	});
+	s.tick();
+	// -> end undefined
+
+
 End.
 
 

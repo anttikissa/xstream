@@ -1,6 +1,9 @@
 
 # TODO (because this still is mostly for myself)
 
+- consider the possibility of calling .end() at the _last_ iteration of 
+  generators, so that the .onEnd() handler will be called on the next tick.
+  This could be cleaner (in some sense)
 - need to keep with the same terminology so it seems that I know what
   I'm doing
 - It might be a good idea to make generators that follow another stream.
@@ -792,7 +795,9 @@ But before that, let's introduce a third property of streams:
 3. A stream can notify you when it no longer wants to broadcast its value
 
 You can end a stream by calling `stream.end()`, and listen to end events by
-calling `stream.onEnd()`.
+calling `stream.onEnd()`.  It's equivalent to `stream.ends().forEach()`,
+except that in the callback, `this` is set to the stream instead of the
+end stream.
 
 	var s = stream();
 	s.forEach(log);

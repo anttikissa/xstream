@@ -250,10 +250,16 @@ Stream.prototype.skip = function skip(n) {
 };
 
 Stream.prototype.leave = function leave(n) {
+	// Return a stream that stays dormant...
 	var result = stream();
+
+	// ...until the original stream has ended (at which point
+	// .slidingWindow(n) ends, too; on the end tick, rewire 
+	// `this` to be a generator stream with the last `n` values.
 	this.slidingWindow(n).onEnd(function(values) {
 		result.rewire(stream.fromArray(values));
 	});
+
 	return result;
 };
 
@@ -520,11 +526,12 @@ function fromArrayUpdater() {
 	if (this.ended()) {
 		return;
 	}
-	if (this.state.length === 0) {
+
+	this.newValue = this.f();
+
+	if (this.ended()) {
 		return this.end();
 	}
-
-	this.newValue = this.state.shift();
 
 	stream.ticks.update();
 }
@@ -536,10 +543,27 @@ function fromArrayUpdater() {
 // Set the the first value in the current transaction and the following
 // values in following transactions.
 stream.fromArray = function fromArray(array) {
-	return stream.link(
+
+	var result = stream.link(
 		stream.ticks,
 		stream().withState(array.slice()),
-		fromArrayUpdater).update();
+		fromArrayUpdater);
+
+	// Guaranteed to be only called when .ended() is false
+	result.f = function() {
+		return this.state.shift();
+	};
+
+	result.ended = function() {
+		return (this.state.length === 0);
+	}
+
+	if (result.ended())
+		result.end();
+	else
+		result.update();
+
+	return result;
 };
 
 function countUpdater() {
@@ -551,7 +575,7 @@ function countUpdater() {
 	stream.ticks.update();
 };
 
-stream.count = function(array) {
+stream.count = function() {
 	return stream.link(stream.ticks, stream().withState(0), countUpdater).update();
 };
 
@@ -1100,8 +1124,6 @@ function updateOrder(nodes) {
 Transaction.prototype.commit = function() {
 	stream.withinCommit = true;
 
-	var tick = stream.currentTick;
-
 	// Ensure that stream.ticks is always in the update queue.
 	stream.ticks.update();
 
@@ -1125,6 +1147,9 @@ Transaction.prototype.commit = function() {
 			}
 		}
 
+		// This clears the transaction queue.
+		// In practice, this means that actions resulting from updaters or
+		// listeners will be scheduled to the next transaction.
 		if (stream.tx === this) {
 			delete stream.tx;
 		}
@@ -1158,7 +1183,6 @@ Transaction.prototype.commit = function() {
 	} finally {
 		// In case of emergency, dump the whole transaction queue
 		if (stream.tx === this) {
-			console.log('TICK ' + tick + ': deleting tx in finally');
 			delete stream.tx;
 		}
 		stream.withinCommit = false;
