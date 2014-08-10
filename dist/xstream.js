@@ -81,15 +81,6 @@ function toArray(args) {
 // The Stream constructor is available as stream.Stream, but usually it's invoked by
 // calling the function stream(initial).
 //
-// Updates happen in ticks.  Ticks are triggered by calling the .update() method of any stream.
-// During one tick, one stream can update at most once.  The transaction engine ensures that:
-//
-// - Calling .update() doesn't take effect immediately, but will take effect eventually
-//   (using process.nextTick(), setImmediate(), setTimeout(..., 1) or similar mechanism)
-// - Parents' updater are called before their children's updater
-// - Update handlers are run exactly once for every updated stream
-// - When .forEach() handlers are called, all streams have been updated (consistent worldview)
-//
 function Stream(initial) {
 	this.id = Stream.nextId++;
 	this.value = undefined;
@@ -110,10 +101,16 @@ Stream.nextId = 0;
 // without broadcasting it.
 //
 // Return this.
-Stream.prototype.withInitialValue = function withInitialValue(value) {
+Stream.prototype.withInitialValue = function(value) {
 	this.value = value;
 	return this;
 };
+
+// For debugging
+Stream.prototype.name = function(name) {
+	this._name = name;
+	return this;
+}
 
 // Tell my listeners that my value has been updated.
 Stream.prototype.broadcast = function broadcast() {
@@ -132,11 +129,18 @@ Stream.prototype.forEach = function forEach(f) {
 
 // Update my value to `value`.
 //
-// The value of this stream and the values of streams depending on it
-// will be updated during this tick.
+// Updates happen in ticks.  Ticks are triggered by calling the
+// .update() method of any stream.  During one tick, one stream can
+// update at most once.  The transaction engine ensures that:
 //
-// `.forEach` listeners for the updated streams will be called at the
-// end of this tick.
+// - Calling .update() doesn't take effect immediately, but will take
+//   effect eventually (using process.nextTick(), setImmediate(),
+//   setTimeout(..., 1) or similar mechanism)
+// - Parents' updater are called before their children's updater
+// - Update handlers are run exactly once for every updated stream
+// - When .forEach() handlers are called, all streams have been updated
+//   (consistent worldview)
+//
 Stream.prototype.update = function update(value) {
 	stream.transaction().update(this, value);
 	return this;
@@ -364,13 +368,13 @@ function reduceUpdater(parent) {
 // s2: 1 2 4 6 11 17 23
 //
 // TODO example with `initial`
-Stream.prototype.reduce = function reduce(f, initial) {
+Stream.prototype.reduce = function(f, initial) {
 	return stream.link(this, stream().withInitialValue(initial), reduceUpdater, f)
 		.linkEnds(this);
 };
 
 // Collect all values of a stream into an array
-Stream.prototype.collect = function collect() {
+Stream.prototype.collect = function() {
 	return this.reduce(function(array, x) {
 		return array.concat(x);
 	}, []);
@@ -384,13 +388,13 @@ function rewireUpdater(parent) {
 // remove vs. detach, dependencies vs. parents/children
 //
 // Remove a child from this stream's dependencies.
-Stream.prototype.removeChild = function removeChild(child) {
+Stream.prototype.removeChild = function(child) {
 	assert(this.children.indexOf(child) !== -1);
 	this.children.splice(this.children.indexOf(child), 1);
 }
 
 // Remove all incoming dependencies
-Stream.prototype.detachFromParents = function detachFromParents() {
+Stream.prototype.detachFromParents = function() {
 	for (var i = 0, len = this.parents.length; i < len; i++) {
 		this.parents[i].removeChild(this);
 	}
@@ -405,7 +409,7 @@ Stream.prototype.detachFromParents = function detachFromParents() {
 // Add a dependency from `parent` to `child`
 // Remove old dependencies
 //
-Stream.prototype.rewire = function rewire(newParent) {
+Stream.prototype.rewire = function(newParent) {
 	for (var i = 0, len = this.parents.length; i < len; i++) {
 		var parent = this.parents[i];
 		parent.removeChild(this);
@@ -424,7 +428,7 @@ function masterUpdater() {
 //
 // When `parent` ends, make `this` end as well, taking the end value
 // from `this.master`.
-Stream.prototype.linkEnds = function linkEnds(parent) {
+Stream.prototype.linkEnds = function(parent) {
 	stream.link(parent.ends(), this.ends(), masterUpdater);
 	return this;
 };
@@ -432,7 +436,7 @@ Stream.prototype.linkEnds = function linkEnds(parent) {
 //
 // Debugging support
 //
-Stream.prototype.toString = function toString() {
+Stream.prototype.toString = function() {
 	var result = '[Stream s' + this.id;
 	function show(name, value) {
 		if (value !== undefined) {
@@ -446,6 +450,7 @@ Stream.prototype.toString = function toString() {
 		show(name, '[' + listeners.map(function(f) { return f.toString(); }).join(', ') + ']');
 	}
 	show('value', this.value);
+	show('name', this.name);
 	show('newValue', this.newValue);
 	show('state', JSON.stringify(this.state));
 	showStreams('parents', this.parents);
@@ -455,12 +460,12 @@ Stream.prototype.toString = function toString() {
 };
 
 // For node.js console
-Stream.prototype.inspect = function inspect() {
+Stream.prototype.inspect = function() {
 	return this.toString();
 };
 
 // Log my values, optionally with a prefix
-Stream.prototype.log = function log(prefix) {
+Stream.prototype.log = function(prefix) {
 	return this.forEach(prefix ? function(value) {
 		console.log(prefix, value);
 	} : function(value) {
@@ -471,7 +476,7 @@ Stream.prototype.log = function log(prefix) {
 // A shorthand, to enable:
 //
 // var s = stream(1).tick();
-Stream.prototype.tick = function tick(times) {
+Stream.prototype.tick = function(times) {
 	stream.tick(times);
 	return this;
 };
@@ -483,7 +488,7 @@ Stream.prototype.tick = function tick(times) {
 // - still it's a valid way to .end() a stream that has transactions 
 // in the transaction queue
 // - maybe a cleaner way would be to mark them as .ended or something
-Stream.prototype.cancelTransactions = function cancelTransactions() {
+Stream.prototype.cancelTransactions = function() {
 	var tx = stream.transaction();
 	var that = this;
 	tx.actions = tx.actions.filter(function(action) {
@@ -491,7 +496,7 @@ Stream.prototype.cancelTransactions = function cancelTransactions() {
 	});
 };
 
-Stream.prototype.ends = function ends() {
+Stream.prototype.ends = function() {
 	if (!this.endStream) {
 		this.endStream = stream();
 		this.endStream.master = this;
@@ -507,7 +512,7 @@ Stream.prototype.ends = function ends() {
 // or are all just special cases?
 
 // Shorthand
-Stream.prototype.onEnd = function onEnd(f) {
+Stream.prototype.onEnd = function(f) {
 	this.ends().forEach(f.bind(this));
 };
 
@@ -961,37 +966,6 @@ stream.util.isEven = function isEven(a) { return !(a % 2); }
 stream.util.isOdd = function isOdd(a) { return !!(a % 2); }
 
 //
-// Debugging utilities
-//
-
-// Log arguments using console.log
-//
-// stream.util.log(Object arguments...) -> undefined
-//
-// Like `console.log`, but can be passed around without context.
-stream.util.log = console.log.bind(console);
-
-// Return a logger function that prefixes its arguments with `prefix`.
-//
-// stream.util.log(String prefix) -> (function(Object arguments) -> undefined)
-//
-// Example:
-//
-// logPrefix('[module x]')('hello', 1, 2, 3);
-// // -> [module x] hello 1 2 3
-stream.util.logPrefix = function logPrefix(prefix) {
-	return function() {
-		var args = toArray(arguments);
-		args.unshift(prefix);
-		console.log.apply(console, args);
-	};
-};
-
-
-
-
-
-//
 // Utilities used by Transaction
 //
 
@@ -1263,18 +1237,6 @@ Transaction.prototype.commit = function() {
 		stream.withinCommit = false;
 	}
 };
-
-function f() {
-	var x = stream(1);
-	var y = x.map(function() { return x * 2; });
-	var z = stream.combine(x, y, stream.util.plus);
-	z.log('hello');
-
-	debugger;
-}
-
-f();
-
 
 module.exports = stream;
 })(module); var stream = module.exports;
