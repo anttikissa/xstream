@@ -107,6 +107,7 @@ Stream.prototype.withInitialValue = function withInitialValue(value) {
 // For debugging
 Stream.prototype.name = function(name) {
 	this._name = name;
+	return this;
 }
 
 // Tell my listeners that my value has been updated.
@@ -1234,17 +1235,5 @@ Transaction.prototype.commit = function() {
 		stream.withinCommit = false;
 	}
 };
-
-function f() {
-	var x = stream(1);
-	var y = x.map(function() { return x * 2; });
-	var z = stream.combine(x, y, stream.util.plus);
-	z.log('hello');
-
-	debugger;
-}
-
-//f();
-
 
 module.exports = stream;
