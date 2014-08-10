@@ -1,63 +1,110 @@
 var module = {};
 (function(module) {
-// TODO to make code shorter, consider:
 //
-// extract pattern
-//   if (some[thing]) {
-//	 some[thing].push(value);
-//   } else {
-//	 some[thing] = [value];
-//   }
+// xstream: A lean and mean reactive programming library
 //
-// into a function and call it like 
-// some[thing] = push(some[thing], value);
+// Browser usage:
+//
+// <script src='dist/xstream.js'></script>
+// <script>stream.fromArray([1,2,3]).map(function(x) { return x * 2; }).log('hi');</script>
+//
+// Node.js usage:
+//
+// $ npm install xstream
+// var stream = require('xstream');
+// stream.fromArray([1,2,3].map(function(x) { return x * 2; }).log('hi');
 //
 
 //
 // General utility functions
 //
+// Used internally.
+//
 
-// Identical to console.log but shorter to write
+// Like console.log but shorter to write and can be passed around as a function.
+// TODO strip away logging statements in production build.
 var log = console.log.bind(console);
-//var log = function() {};
 
-// A function that does nothing.
+// Don't do anything.  Default updater for streams, among other things.
 function nop() {
 }
 
-// Really simple assert
+// Always return true.
+function alwaysTrue() {
+	return true;
+}
+
+// Assert that 'what' is truthy.
+//
+// TODO strip away assertions in production build.
 function assert(what) {
 	if (!what) {
 		throw new Error('assert failed');
 	}
 }
 
-// Convert argument-like object to array
+// Assert type of object.
+function assertType(object, type) {
+	if (typeof object !== type) {
+		throw new Error('wrong type');
+	}
+}
+
+// Convert argument-like object to array.
 function toArray(args) {
 	return Array.prototype.slice.apply(args);
 }
 
-// ".key" -> function that returns .key
-function access(selector) {
-	if (selector[0] !== '.') {
-		throw new Error('invalid', selector);
-	}
-	var key = selector.slice(1);
-	return function(o) { return o[key]; };
-}
-
+//
+// Create a Stream.
+//
+// initial: optional initial value, will be updated during the next tick.
+//
+// A Stream is an object that has the properties:
+//
+// id: Unique numeric id, starting from 0.
+// value: The most recent value of the stream.  Undefined until the stream has been updated
+//     for the first time.  You can use .withInitialValue() to define a value before that,
+//     but it won't be broadcast to listeners.
+// parents: Array of Streams, whose changes cause this stream's updater to be called.
+// children: Array of Streams, whose updaters will be called whenever this stream has updated.
+// listeners: Array of functions that will be called after each tick.  The listener
+//     takes on argument, which is the new value, and its 'this' will be set to the stream.
+// updater: a function that is called after either this.update() has been called, or one of
+//     this stream's parents is updated.  The updater should either set this stream's
+//     .newValue property (which updates the value of this stream), or do nothing.
+//     A parent stream's .newValue has been set if and only if it has been updated during
+//     this tick.  Updaters can also use the helper functions hasValue(Stream),
+//     hasNewValue(Stream), and mostRecentValue(Stream) to access the parents' value within
+//     the transaction.
+//
+// The Stream constructor is available as stream.Stream, but usually it's invoked by
+// calling the function stream(initial).
+//
+// Updates happen in ticks.  Ticks are triggered by calling the .update() method of any stream.
+// During one tick, one stream can update at most once.  The transaction engine ensures that:
+//
+// - Calling .update() doesn't take effect immediately, but will take effect eventually
+//   (using process.nextTick(), setImmediate(), setTimeout(..., 1) or similar mechanism)
+// - Parents' updater are called before their children's updater
+// - Update handlers are run exactly once for every updated stream
+// - When .forEach() handlers are called, all streams have been updated (consistent worldview)
+//
 function Stream(initial) {
-	this.id = stream.nextId++;
-	this.parents = []; // streams I depend on
-	this.children = []; // streams that depend on me
-	this.listeners = []; // listeners that get my value when it updates
+	this.id = Stream.nextId++;
 	this.value = undefined;
+	this.parents = [];
+	this.children = [];
+	this.listeners = [];
 	this.updater = nop;
 
 	if (initial !== undefined) {
 		this.update(initial);
 	}
 };
+
+// Counter for getting the next stream id.
+Stream.nextId = 0;
 
 // Set the initial value of a stream to a given value 'silently',
 // without broadcasting it.
@@ -482,6 +529,8 @@ var stream = function stream(initial) {
 	return new Stream(initial);
 };
 
+stream.Stream = Stream;
+
 // Will updates automatically schedule a commit?
 stream.autoCommit = true;
 
@@ -490,14 +539,12 @@ stream.autoCommit = true;
 // during the commit phase
 stream.withinCommit = false;
 
-// All streams have an `id`, starting from 1.
-// Debug functions refer to them as 's1', 's2', and so on.
-stream.nextId = 1;
+stream.nextTick = 0;
 
-stream.currentTick = 0;
 stream.ticks = stream();
+
 stream.ticks.updater = function() {
-	this.newValue = stream.currentTick++;
+	this.newValue = stream.nextTick++;
 };
 
 // Get the current transaction or create one.
@@ -535,7 +582,7 @@ stream.from = function from(first) {
 	return stream.fromValues.apply(stream, arguments);
 }
 
-function generatorUpdater() {
+function forUpdater() {
 	if (this.ended()) {
 		return;
 	}
@@ -564,28 +611,22 @@ function generatorUpdater() {
 //   function() { return state <= 5; }).log();
 // // -> 1; 2; 3; 4; 5
 //
-// Also consider renaming this 'for' and making it:
-//
-//   for(initial, condition, nextValue)
-//
-// which is the same as
-//
-//   generator(initial, nextValue, !condition)
-//
 // How about .while(), .do() then?
 //
 // It would make sense, then, to save `condition` in `this.condition`.
 // Probably it would be a saner solution than overriding `.ended`,
 // anyway.
 //
-stream.generator = function generator(initialState, f, ended) {
+// Or, for is a keyword in older browsers, bye IE8
+//
+stream.for = function(initialState, condition, f) {
 	var result = stream.link(
 		stream.ticks,
 		stream().withState(initialState),
-		generatorUpdater,
+		forUpdater,
 		f);
 
-	if (ended) {
+	if (condition) {
 		// TODO VERY unclean. Goes against all principles of
 		// transparency ('ended' can't be retrieved from the resulting
 		// object directly), duplicates code, etc.
@@ -594,7 +635,7 @@ stream.generator = function generator(initialState, f, ended) {
 		result.ended = function() {
 			if (this.endStream && mostRecentValue(this.endStream) !== undefined)
 				return true;
-			return ended.apply(this);
+			return !condition.apply(this);
 		}
 	}
 
@@ -609,6 +650,20 @@ stream.generator = function generator(initialState, f, ended) {
 	return result;
 };
 
+// Loop is like `for` except it never ends (unless .end() is called
+// explicitly).
+stream.loop = function loop(initialState, f) {
+	return stream.for(initialState, alwaysTrue, f);
+};
+
+// Count numbers from 'initial'.
+stream.count = function(initial) {
+	return stream.loop(
+		initial || 0,
+		function() { return this.state++; }
+		);
+};
+
 // Make a stream from an array.
 //
 // stream.fromArray([Object]) -> Stream
@@ -616,34 +671,28 @@ stream.generator = function generator(initialState, f, ended) {
 // Set the the first value in the current transaction and the following
 // values in following transactions.
 stream.fromArray = function fromArray(array) {
-	return stream.generator(
+	return stream.for(
 		array.slice(),
-		function() { return this.state.shift(); },
-		function() { return this.state.length === 0; });
-};
-
-// Count numbers from 'initial'.
-stream.count = function(initial) {
-	return stream.generator(
-		initial || 0,
-		function() { return this.state++; });
+		function() { return this.state.length; },
+		function() { return this.state.shift(); }
+		);
 };
 
 stream.fromRange = function fromRange(start, end, step) {
 	end = end !== undefined ? end : Infinity;
 	step = step || 1;
-	var state = { current: start, end: end, step: step };
 
-	return stream.generator(
-		state,
+	return stream.for(
+		{ current: start, end: end, step: step },
+		function() {
+			return this.state.current <= this.state.end;
+		},
 		function() {
 			var current = this.state.current;
 			this.state.current += this.state.step;
 			return current;
-		},
-		function() {
-			return this.state.current > this.state.end;
-		});
+		}
+		);
 }
 
 // Make a stream from a list of values.
@@ -946,21 +995,6 @@ stream.util.logPrefix = function logPrefix(prefix) {
 // Utilities used by Transaction
 //
 
-// Return array of keys in object
-// IE8 needs this
-function keys(o) {
-	if (Object.keys) {
-		return Object.keys(o);
-	}
-	var keys = [];
-	for (var key in o) {
-		if (o.hasOwnProperty(key)) {
-			keys.push(key);
-		}
-	}
-	return keys;
-}
-
 // Find first element in array that satisfies test(element), or undefined
 function find(array, test) {
 	for (var i = 0, len = array.length; i < len; i++) {
@@ -1137,7 +1171,7 @@ function updateOrder(nodes) {
 		// natural ordering
 		// update children's parent counts
 		// push it into nodesToUpdate
-		var nodeKeys = keys(parentCounts);
+		var nodeKeys = Object.keys(parentCounts);
 		if (nodeKeys.length === 0) {
 			break;
 		}
@@ -1229,6 +1263,18 @@ Transaction.prototype.commit = function() {
 		stream.withinCommit = false;
 	}
 };
+
+function f() {
+	var x = stream(1);
+	var y = x.map(function() { return x * 2; });
+	var z = stream.combine(x, y, stream.util.plus);
+	z.log('hello');
+
+	debugger;
+}
+
+f();
+
 
 module.exports = stream;
 })(module); var stream = module.exports;
