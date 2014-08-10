@@ -1,0 +1,11 @@
+#!/bin/bash
+
+WF="node_modules/.bin/watch-file"
+SOURCES="xstream.js"
+
+while true
+do
+	$WF $SOURCES
+	./mk
+done
+
