@@ -104,6 +104,11 @@ Stream.prototype.withInitialValue = function withInitialValue(value) {
 	return this;
 };
 
+// For debugging
+Stream.prototype.name = function(name) {
+	this._name = name;
+}
+
 // Tell my listeners that my value has been updated.
 Stream.prototype.broadcast = function broadcast() {
 	for (var i = 0, len = this.listeners.length; i < len; i++) {
@@ -121,14 +126,17 @@ Stream.prototype.forEach = function forEach(f) {
 
 // Update my value to `value`.
 //
-// Updates happen in ticks.  Ticks are triggered by calling the .update() method of any stream.
-// During one tick, one stream can update at most once.  The transaction engine ensures that:
+// Updates happen in ticks.  Ticks are triggered by calling the
+// .update() method of any stream.  During one tick, one stream can
+// update at most once.  The transaction engine ensures that:
 //
-// - Calling .update() doesn't take effect immediately, but will take effect eventually
-//   (using process.nextTick(), setImmediate(), setTimeout(..., 1) or similar mechanism)
+// - Calling .update() doesn't take effect immediately, but will take
+//   effect eventually (using process.nextTick(), setImmediate(),
+//   setTimeout(..., 1) or similar mechanism)
 // - Parents' updater are called before their children's updater
 // - Update handlers are run exactly once for every updated stream
-// - When .forEach() handlers are called, all streams have been updated (consistent worldview)
+// - When .forEach() handlers are called, all streams have been updated
+//   (consistent worldview)
 //
 Stream.prototype.update = function update(value) {
 	stream.transaction().update(this, value);
@@ -439,6 +447,7 @@ Stream.prototype.toString = function toString() {
 		show(name, '[' + listeners.map(function(f) { return f.toString(); }).join(', ') + ']');
 	}
 	show('value', this.value);
+	show('name', this.name);
 	show('newValue', this.newValue);
 	show('state', JSON.stringify(this.state));
 	showStreams('parents', this.parents);
@@ -954,37 +963,6 @@ stream.util.isEven = function isEven(a) { return !(a % 2); }
 stream.util.isOdd = function isOdd(a) { return !!(a % 2); }
 
 //
-// Debugging utilities
-//
-
-// Log arguments using console.log
-//
-// stream.util.log(Object arguments...) -> undefined
-//
-// Like `console.log`, but can be passed around without context.
-stream.util.log = console.log.bind(console);
-
-// Return a logger function that prefixes its arguments with `prefix`.
-//
-// stream.util.log(String prefix) -> (function(Object arguments) -> undefined)
-//
-// Example:
-//
-// logPrefix('[module x]')('hello', 1, 2, 3);
-// // -> [module x] hello 1 2 3
-stream.util.logPrefix = function logPrefix(prefix) {
-	return function() {
-		var args = toArray(arguments);
-		args.unshift(prefix);
-		console.log.apply(console, args);
-	};
-};
-
-
-
-
-
-//
 // Utilities used by Transaction
 //
 
@@ -1266,7 +1244,7 @@ function f() {
 	debugger;
 }
 
-f();
+//f();
 
 
 module.exports = stream;
