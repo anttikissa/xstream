@@ -58,23 +58,27 @@ window.addEventListener('load', function() {
 		cells[id] = el;
 		el.value = 0;
 		
-		el.changes = eventStream(el, 'change').log(id + ' changes');
-		// Will be rewired whenever the formula changes
+		el.inputValues = eventStream(el, 'change').log(id + ' changes');
+
 		el.dynamic = stream();
 		el.stream = stream.merge(
-			el.changes
+			el.inputValues
 				.filter(stream.util.not(looksLikeDynamic))
 				.map(convert).log(id + ' converted'),
 			el.dynamic).name(id);
 
 		assign(el.stream, el);
-		
-		el.stream.update(convert(el.value));
 
-		el.changes.filter(looksLikeDynamic).forEach(function(value) {
-			var expr = value.substr(1);
-			var refs = expr.match(/[A-Z][0-9]+/g) || [];
-			var f = new Function(refs.join(','), "return " + expr + ";");
+		// On input values like '=<formula>':
+		// - turn <formula> into a function,
+		// - use stream.combine() to make a stream that uses the function to 
+		//   combine the value streams the cells it refers to,
+		// - rewire el.dynamic with the aforementioned stream,
+		// - and save the formula in el.formula.
+		el.inputValues.filter(looksLikeDynamic).forEach(function(value) {
+			var formula = value.substr(1);
+			var refs = formula.match(/[A-Z][0-9]+/g) || [];
+			var f = new Function(refs.join(','), "return " + formula + ";");
 			var combineArgs = refs.map(function(ref) {
 				return cells[ref].stream;
 			}).concat(f);
@@ -84,7 +88,11 @@ window.addEventListener('load', function() {
 			if (refs.length) {
 				cells[refs[0]].stream.update(cells[refs[0]].stream.value);
 			}
+			el.formula = formula;
 		});
+
+		// Bootstrap the value stream with the initial value.
+		el.stream.update(convert(el.value));
 
 		return el;
 	}
@@ -106,6 +114,13 @@ window.addEventListener('load', function() {
 
 	// And focus on the first one.
 	cells.A1.focus();
+
+	// A small test.
+	setTimeout(function() {
+		cells.B1.inputValues.update('=A1 + 1');
+		cells.C1.inputValues.update('=B1 + 2');
+		cells.A1.inputValues.update('123');
+	}, 100);
 });
 </script>
 <style>
@@ -116,10 +131,6 @@ window.addEventListener('load', function() {
 
 	input:disabled {
 		background: #eee;
-//		border: 2px solid black;
 	}
-
 </style>
-<h1>Hello</h1>
-
 
