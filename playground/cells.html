@@ -3,79 +3,120 @@
 <title>Cells test</title>
 <script src='../dist/xstream.js'></script>
 <script>
+window.addEventListener('load', function() {
 
+	// Tired of typing console.log everywhere.
 	var log = console.log.bind(console);
 
-	// split into eventStream() and .get()
-	// that accesses e.target.value
+	// A stream that updates on every DOM event of type 'event' on 'el'.
 	function eventStream(el, event) {
 		var result = stream();
 		el.addEventListener(event, function(e) {
-			result.set(e.target.value);
+			result.update(e.target.value);
 		});
 		return result;
 	}
 
+	// Update DOM element's .value whenever 'stream' updates.
+	function assign(stream, el) {
+		stream.forEach(function(value) {
+			el.value = value;
+		});
+	}
+
+	// Collection of all cells, indexed by id like 'A1'
 	var cells = {};
 
+	// Shorthand for document.createElement.
 	function elem(type) {
 		return document.createElement(type);
 	}
 
+	// Convert a string to an actual value
+	// e.g. '1' -> 1, 'abc' -> 'abc'
+	function convert(str) {
+		var number = Number(str);
+		if (isNaN(number))
+			return str;
+		return number;
+	}
+
+	function looksLikeDynamic(s) {
+		return s[0] === '=';
+	}
+
 	function cell(id) {
 		var el = elem('input');
-		cells[id] = el;
-		el.value = id;
-		el.stream = stream();
-		// debugging
-		el.stream.forEach(function(value) {
-			log(id, 'set to', value);
-		});
-		var changes = eventStream(el, 'change');
-		el.stream.rewire(changes);
 
-		changes.forEach(function(value) {
-			if (value[0] === '=') {
-				log('dynamic value', value);
+		// A hack to create column and row headers
+		if (id[0] === ' ' || id[1] === ' ') {
+			el.disabled = true;
+			el.value = id;
+			return el;
+		}
+
+		cells[id] = el;
+		el.value = 0;
+		
+		el.changes = eventStream(el, 'change').log(id + ' changes');
+		// Will be rewired whenever the formula changes
+		el.dynamic = stream();
+		el.stream = stream.merge(
+			el.changes
+				.filter(stream.util.not(looksLikeDynamic))
+				.map(convert).log(id + ' converted'),
+			el.dynamic).name(id);
+
+		assign(el.stream, el);
+		
+		el.stream.update(convert(el.value));
+
+		el.changes.filter(looksLikeDynamic).forEach(function(value) {
+			var expr = value.substr(1);
+			var refs = expr.match(/[A-Z][0-9]+/g) || [];
+			var f = new Function(refs.join(','), "return " + expr + ";");
+			var combineArgs = refs.map(function(ref) {
+				return cells[ref].stream;
+			}).concat(f);
+			var dynamic = stream.combine.apply(undefined, combineArgs);
+			el.dynamic.rewire(dynamic);
+			// trigger first update - TODO more elegant way to do this?
+			if (refs.length) {
+				cells[refs[0]].stream.update(cells[refs[0]].stream.value);
 			}
 		});
+
 		return el;
 	}
 
-	// This is really an operation that concatenates a stream of
-	// streams.
-	// So it should be called stream.concat() or something.
-	// concatStream() possibly, if mergeStream() is the flatMap one.
-	// and mergeLatest() flatMapLatest
-	// should it actually be mapLatest()
-	// Oh, by the way, concatStream is a generalization of
-	// async.series and mergeStream is a generalization of
-	// async.parallel
-
-	var rows = stream.fromArray([1,2,3,4,5,6,7,8,9,10]).map(function(row) {
-		return stream.fromString('ABCDEFGHI\n').map(function(column) {
-			if (column === '\n')
-				return elem('br');
-			return cell(column + row);
-		});
-	});
-
-	rows.forEach(function(stream) {
-		stream.forEach(function(x) {
-			document.body.appendChild(x);
-		});
-	});
-	var cells = rows.concatStream();
-
-</script>
-<style>
-	body {
-		color: green;
+	// Shorthand for document.body.appendChild.
+	function push(elem) {
+		document.body.appendChild(elem);
 	}
 
+	// Populate the DOM with cells.
+	[' ', 1,2,3,4,5,6,7,8,9,10].forEach(function(row) {
+		" ABCDEFGHI\n".split('').forEach(function(column) {
+			if (column === '\n')
+				push(elem('br'));
+			else
+				push(cell(column + row));
+		});
+	});
+
+	// And focus on the first one.
+	cells.A1.focus();
+});
+</script>
+<style>
 	input {
 		margin: 0;
 		width: 100px;
+	}
+
+	input:disabled {
+		background: #eee;
+//		border: 2px solid black;
 	}
 
 </style>
