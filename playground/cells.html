@@ -67,7 +67,7 @@ window.addEventListener('load', function() {
 
 		// 'inputValues' is a a stream of everything that the user types
 		// into the <input> element.
-		el.inputValues = eventStream(el, 'change');
+		el.inputValues = eventStream(el, 'change').uniq();
 
 		// If the stream will at some point contain a formula,
 		// 'dynamicValues' will be rewired to a stream that reflects its
@@ -109,8 +109,21 @@ window.addEventListener('load', function() {
 		// change event.
 		assign(el.values, el);
 
+		eventStream(el, 'focus').forEach(function() {
+			if (el.formula) {
+				el.value = '=' + el.formula;
+			}
+		});
+
+		eventStream(el, 'blur').forEach(function() {
+			if (el.values.value !== undefined) {
+				el.value = el.values.value;
+			}
+		});
+
 		// All cells start with the value of zero.
 		el.value = 0;
+
 		// Bootstrap the value stream with the initial value.
 		el.values.update(convert(el.value));
 
