@@ -12,7 +12,7 @@ window.addEventListener('load', function() {
 	function eventStream(el, event) {
 		var result = stream();
 		el.addEventListener(event, function(e) {
-			result.update(e.target.value);
+			result.update(e);
 		});
 		return result;
 	}
@@ -55,6 +55,7 @@ window.addEventListener('load', function() {
 	// Create a cell.
 	function cell(id) {
 		var el = elem('input');
+		el.id = id;
 
 		// A hack to create column and row headers
 		if (id[0] === ' ' || id[1] === ' ') {
@@ -67,7 +68,9 @@ window.addEventListener('load', function() {
 
 		// 'inputValues' is a a stream of everything that the user types
 		// into the <input> element.
-		el.inputValues = eventStream(el, 'change').uniq();
+		el.inputValues = eventStream(el, 'change').map(function(ev) {
+			return ev.target.value;
+		}).uniq();
 
 		// If the stream will at some point contain a formula,
 		// 'dynamicValues' will be rewired to a stream that reflects its
@@ -119,6 +122,53 @@ window.addEventListener('load', function() {
 			if (el.values.value !== undefined) {
 				el.value = el.values.value;
 			}
+		});
+
+		// For navigating between cells.
+		// Example:
+		//     move('B3', 1, -1) -> 'A4'
+		function move(id, rowChange, columnChange) {
+			var match = id.match(/([A-Z]+)([0-9]+)/);
+			var row = Number(match[2]) + rowChange;
+			var column = match[1].charCodeAt(0) - 64 + columnChange;
+			return String.fromCharCode(column + 64) + row;
+		}
+
+		// Map key events to movements
+		var keyUps = eventStream(el, 'keydown');
+		var movements = keyUps.map(function(event) {
+			// TODO handle tab, shift-tab here, too
+			switch (event.keyCode) {
+				case 13: return [0, 1];  // enter 
+				case 40: return [0, 1];  // down
+				case 38: return [0, -1]; // up
+				// These two don't work that well yet
+				//case 37: return [-1, 0]; // left
+				//case 39: return [1, 0];  // right
+				default: return [0, 0];
+			}
+		}).log('keyup');
+
+		var moves = stream.combineWhenAll(keyUps, movements,
+				function(event, movement) {
+			var rowChange = movement[1];
+			var columnChange = movement[0];
+			var nextId = move(event.target.id, rowChange, columnChange)
+			if (cells[nextId]) {
+				return nextId;
+			}
+			return event.target.id;
+		}).log('moves');
+
+		function selectText(el) {
+			el.selectionStart = 0;
+			el.selectionEnd = 1000;
+		}
+
+		moves.forEach(function(id) {
+			// TODO select contents of a cell
+			cells[id].focus();
+			selectText(cells[id]);
 		});
 
 		// All cells start with the value of zero.
