@@ -124,51 +124,29 @@ window.addEventListener('load', function() {
 			}
 		});
 
+
 		// For navigating between cells.
-		// Example:
-		//     move('B3', 1, -1) -> 'A4'
-		function move(id, rowChange, columnChange) {
+		function nextId(id, rowChange) {
 			var match = id.match(/([A-Z]+)([0-9]+)/);
 			var row = Number(match[2]) + rowChange;
-			var column = match[1].charCodeAt(0) - 64 + columnChange;
-			return String.fromCharCode(column + 64) + row;
+			return match[1] + row;
+		}
+
+		function move(rowChange) {
+			var next = nextId(el.id, rowChange)
+			if (cells[next]) {
+				cells[next].focus();
+				cells[next].selectionStart = 0;
+			}
 		}
 
 		// Map key events to movements
-		var keyUps = eventStream(el, 'keydown');
-		var movements = keyUps.map(function(event) {
-			// TODO handle tab, shift-tab here, too
+		eventStream(el, 'keydown').forEach(function(event) {
 			switch (event.keyCode) {
-				case 13: return [0, 1];  // enter 
-				case 40: return [0, 1];  // down
-				case 38: return [0, -1]; // up
-				// These two don't work that well yet
-				//case 37: return [-1, 0]; // left
-				//case 39: return [1, 0];  // right
-				default: return [0, 0];
+				case 13: return move(1); // enter -> down
+				case 40: return move(1); // down
+				case 38: return move(-1); // up
 			}
-		}).log('keyup');
-
-		var moves = stream.combineWhenAll(keyUps, movements,
-				function(event, movement) {
-			var rowChange = movement[1];
-			var columnChange = movement[0];
-			var nextId = move(event.target.id, rowChange, columnChange)
-			if (cells[nextId]) {
-				return nextId;
-			}
-			return event.target.id;
-		}).log('moves');
-
-		function selectText(el) {
-			el.selectionStart = 0;
-			el.selectionEnd = 1000;
-		}
-
-		moves.forEach(function(id) {
-			// TODO select contents of a cell
-			cells[id].focus();
-			selectText(cells[id]);
 		});
 
 		// All cells start with the value of zero.
