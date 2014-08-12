@@ -110,7 +110,19 @@ window.addEventListener('load', function() {
 			try {
 				el.dynamicValues.rewire(dynamicValues);
 			} catch (e) {
-				console.log('!!! ERREUR', e);
+				if (e instanceof stream.CyclicalDependencyError) {
+					var cycle = e.path.filter(function(stream) {
+						return stream._name;
+					}).map(function(stream) {
+						return stream._name;
+					});
+
+					cycle.unshift(el.id);
+
+					window.alert('Cycle detected! ' + cycle.join(' -> '));
+					el.dynamicValues.rewire(stream());
+					return;
+				}
 			}
 			el.formula = formula;
 		});
