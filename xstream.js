@@ -338,24 +338,22 @@ Stream.prototype.log = function(prefix) {
 // and otherwise do nothing.  The 'newValue' attribute of parent streams
 // has been set for those parents that were updated during this tick.
 //
-// Return child.
+// Return this.
 //
-function link(parents, child, updater, f) {
+Stream.prototype.link = function(parents, updater, f) {
 	if (parents instanceof Stream) {
 		parents = [parents];
 	}
 
 	for (var i = 0, len = parents.length; i < len; i++) {
-		parents[i].children.push(child);
+		parents[i].children.push(this);
 	}
-	child.parents = parents;
-	child.updater = updater;
-	child.f = f || null;
+	this.parents = parents;
+	this.updater = updater;
+	this.f = f || null;
 
-	return child;
+	return this;
 };
-
-stream.link = link;
 
 
 
@@ -466,7 +464,7 @@ function mapUpdater(parent) {
 // Should we implement it in terms of a more complex and generalized
 // function or leave it as is?
 Stream.prototype.map = function map(f) {
-	return stream.link(this, stream(), mapUpdater, f).linkEnds(this);
+	return stream().link(this, mapUpdater, f).linkEnds(this);
 };
 
 function filterUpdater(parent) {
@@ -483,7 +481,7 @@ function filterUpdater(parent) {
 // s1: 1 1 2 2 5 6 6
 // s2: 1 1     5
 Stream.prototype.filter = function filter(f) {
-	return stream.link(this, stream(), filterUpdater, f);
+	return stream().link(this, filterUpdater, f);
 };
 
 function uniqUpdater(parent) {
@@ -501,7 +499,7 @@ function uniqUpdater(parent) {
 // s2: 1   2   5 6
 Stream.prototype.uniq = function uniq() {
 	// TODO f could be the equals function?
-	return stream.link(this, stream(), uniqUpdater);
+	return stream().link(this, uniqUpdater);
 };
 
 // A shorthand to initialize stream.state.
@@ -519,8 +517,7 @@ function takeUpdater(parent) {
 
 // Returns 'n' first elements
 Stream.prototype.take = function take(n) {
-	return stream.link(this, stream().withState(n), takeUpdater)
-		.linkEnds(this);
+	return stream().withState(n).link(this, takeUpdater).linkEnds(this);
 };
 
 function skipUpdater(parent) {
@@ -533,8 +530,7 @@ function skipUpdater(parent) {
 
 // Leaves out 'n' first elements, then returns the rest
 Stream.prototype.skip = function skip(n) {
-	return stream.link(this, stream().withState(n), skipUpdater)
-		.linkEnds(this);
+	return stream().withState(n).link(this, skipUpdater).linkEnds(this);
 };
 
 Stream.prototype.leave = function leave(n) {
@@ -562,8 +558,8 @@ function slidingWindowUpdater(parent) {
 //
 // Could probably be implemented more cleanly with .reduce()
 Stream.prototype.slidingWindow = function slidingWindow(n) {
-	return stream.link(this, stream().withState(n).withInitialValue([]),
-		slidingWindowUpdater).linkEnds(this);
+	return stream().withState(n).withInitialValue([])
+		.link(this, slidingWindowUpdater).linkEnds(this);
 };
 
 // Skips 'start' elements, then returns elements until the 'end'th
@@ -603,7 +599,7 @@ function reduceUpdater(parent) {
 //
 // TODO example with 'initial'
 Stream.prototype.reduce = function(f, initial) {
-	return stream.link(this, stream().withInitialValue(initial), reduceUpdater, f)
+	return stream().withInitialValue(initial).link(this, reduceUpdater, f)
 		.linkEnds(this);
 };
 
@@ -649,7 +645,7 @@ Stream.prototype.rewire = function(newParent) {
 		parent.removeChild(this);
 	}
 	// TODO wrap in try-catch-rewire-to-stream()-rethrow?
-	return stream.link(newParent, this, rewireUpdater).ensureNoCyclicalDependencies().linkEnds(newParent);
+	return this.link(newParent, rewireUpdater).ensureNoCyclicalDependencies().linkEnds(newParent);
 };
 
 // Update value from the most recent value of the master.
@@ -664,7 +660,7 @@ function masterUpdater() {
 // When 'parent' ends, make 'this' end as well, taking the end value
 // from 'this.master'.
 Stream.prototype.linkEnds = function(parent) {
-	stream.link(parent.ends(), this.ends(), masterUpdater);
+	this.ends().link(parent.ends(), masterUpdater);
 	return this;
 };
 
@@ -810,9 +806,8 @@ function forUpdater() {
 // Or, for is a keyword in older browsers, bye IE8
 //
 stream.for = function(initialState, condition, f) {
-	var result = stream.link(
+	var result = stream().withState(initialState).link(
 		stream.ticks,
-		stream().withState(initialState),
 		forUpdater,
 		f);
 
@@ -965,6 +960,7 @@ function combine2Updater(firstParent, secondParent) {
 		mostRecentValue(secondParent));
 }
 
+// TODO is this necessary?
 function combine3Updater(firstParent, secondParent, thirdParent) {
 	this.newValue = this.f(
 		mostRecentValue(firstParent),
@@ -985,6 +981,7 @@ function combineWhenAll2Updater(firstParent, secondParent) {
 	}
 }
 
+// TODO is this necessary?
 function combineWhenAll3Updater(firstParent, secondParent, thirdParent) {
 	if (hasValue(firstParent) && hasValue(secondParent) && 
 		hasValue(thirdParent)) {
@@ -1013,18 +1010,18 @@ stream.combine = function combine() {
 		parents.length === 3 ? combine3Updater :
 		combineUpdater;
 
-	return stream.link(parents, stream(), updater, f);
+	return stream().link(parents, updater, f);
 }
 
 // TODO link .ends()
 stream.combineWhenAll = function combineWhenAll() {
 	var parents = copyArray(arguments);
 	var f = parents.pop();
-	var updater = parents.length === 2 ? combineWhenAllUpdater :
-		parents.length === 3 ? combineWhenAllUpdater :
+	var updater = parents.length === 2 ? combineWhenAll2Updater :
+		parents.length === 3 ? combineWhenAll3Updater :
 		combineWhenAllUpdater;
 
-	return stream.link(parents, stream(), updater, f);
+	return stream().link(parents, updater, f);
 }
 
 function merge2Updater(firstParent, secondParent) {
@@ -1050,7 +1047,7 @@ function mergeUpdater() {
 stream.merge = function merge() {
 	var parents = copyArray(arguments);
 	var updater = parents.length === 2 ? merge2Updater : mergeUpdater;
-	return stream.link(parents, stream(), updater);
+	return stream().link(parents, updater);
 }
 
 // Take n streams and make a stream of arrays from them that is updated
