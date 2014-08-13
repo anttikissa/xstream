@@ -465,7 +465,7 @@ function mapUpdater(parent) {
 	this.newValue = this.f(parent.newValue);
 }
 
-// Returns a stream whose value is updated with 'f(x)' whenever this
+// Return a stream whose value is updated with 'f(x)' whenever this
 // stream's value is updated with 'x'.
 //
 // var s2 = s1.map(plusOne);
@@ -490,7 +490,7 @@ function filterUpdater(parent) {
 	}
 }
 
-// Returns a stream whose value is updated with 'x' whenever this 
+// Return a stream whose value is updated with 'x' whenever this
 // stream's value is updated with 'x', if 'f(x)' is true.
 //
 // var s2 = s1.filter(isOdd);
@@ -501,13 +501,15 @@ Stream.prototype.filter = function filter(f) {
 	return stream().link(this, filterUpdater, f);
 };
 
+// Updater function for Stream.filter().
+
 function uniqUpdater(parent) {
 	if (this.value !== parent.newValue) {
 		this.newValue = parent.newValue;
 	}
 }
 
-// Returns a stream whose value is the same as this stream's value,
+// Return a stream whose value is the same as this stream's value,
 // but is only broadcast whenever this stream's value changes.
 //
 // var s2 = s1.uniq()
@@ -520,6 +522,8 @@ Stream.prototype.uniq = function uniq() {
 };
 
 // A shorthand to initialize stream.state.
+//
+// Return this.
 Stream.prototype.withState = function withState(state) {
 	this.state = state;
 	return this;
@@ -532,7 +536,8 @@ function takeUpdater(parent) {
 	this.newValue = parent.newValue;
 }
 
-// Returns 'n' first elements
+// A stream that takes 'n' first elements of its parent stream,
+// then ends.
 Stream.prototype.take = function take(n) {
 	return stream().withState(n).link(this, takeUpdater).linkEnds(this);
 };
@@ -545,17 +550,19 @@ function skipUpdater(parent) {
 	this.newValue = parent.newValue;
 }
 
-// Leaves out 'n' first elements, then returns the rest
+// A stream that skips the 'n' first elements, then follows the parent stream.
 Stream.prototype.skip = function skip(n) {
 	return stream().withState(n).link(this, skipUpdater).linkEnds(this);
 };
 
+// A stream that waits until the parent stream has ended, then gives you
+// the last 'n' elements.
 Stream.prototype.leave = function leave(n) {
 	// Return a stream that stays dormant...
 	var result = stream();
 
 	// ...until the original stream has ended (at which point
-	// .slidingWindow(n) ends, too; on the end tick, rewire 
+	// .slidingWindow(n) ends, too; on the end tick, rewire
 	// 'this' to be a generator stream with the last 'n' values.
 	this.slidingWindow(n).onEnd(function(values) {
 		result.rewire(stream.fromArray(values));
@@ -564,6 +571,7 @@ Stream.prototype.leave = function leave(n) {
 	return result;
 };
 
+// Updater function for Stream.slidingWindow().
 function slidingWindowUpdater(parent) {
 	this.newValue = this.value.concat(parent.newValue);
 	while (this.newValue.length > this.state) {
@@ -573,7 +581,11 @@ function slidingWindowUpdater(parent) {
 
 // A stream with an array of at most 'n' latest values of its parent.
 //
-// Could probably be implemented more cleanly with .reduce()
+// var s2 = s1.slidingWindow(3);
+//
+// s1: 1   1       2          2        5         6         6
+// s2: [1] [1, 1]  [1, 1, 2] [1, 2, 2] [2, 2, 5] [2, 5, 6] [5, 6, 6]
+
 Stream.prototype.slidingWindow = function slidingWindow(n) {
 	return stream().withState(n).withInitialValue([])
 		.link(this, slidingWindowUpdater).linkEnds(this);
