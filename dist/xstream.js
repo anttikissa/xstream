@@ -343,6 +343,8 @@ Stream.prototype.log = function(prefix) {
 // Return this.
 //
 Stream.prototype.link = function(parents, updater, f) {
+	assert(this.parents.length === 0);
+
 	if (parents instanceof Stream) {
 		parents = [parents];
 	}

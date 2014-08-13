@@ -341,6 +341,8 @@ Stream.prototype.log = function(prefix) {
 // Return this.
 //
 Stream.prototype.link = function(parents, updater, f) {
+	assert(this.parents.length === 0);
+
 	if (parents instanceof Stream) {
 		parents = [parents];
 	}
@@ -631,6 +633,13 @@ Stream.prototype.detachFromParents = function() {
 	this.parents = [];
 };
 
+// Obliterate parent-child relations between my and my parents.
+Stream.prototype.unlink = function() {
+	for (var i = 0, len = this.parents.length; i < len; i++) {
+		this.parents[i].removeChild(this);
+	}
+	this.parents = [];
+};
 
 // rewire: (Stream parent) -> Stream
 //
@@ -640,10 +649,8 @@ Stream.prototype.detachFromParents = function() {
 // Remove old dependencies
 //
 Stream.prototype.rewire = function(newParent) {
-	for (var i = 0, len = this.parents.length; i < len; i++) {
-		var parent = this.parents[i];
-		parent.removeChild(this);
-	}
+	this.unlink();
+
 	// TODO wrap in try-catch-rewire-to-stream()-rethrow?
 	return this.link(newParent, rewireUpdater).ensureNoCyclicalDependencies().linkEnds(newParent);
 };
@@ -660,6 +667,9 @@ function masterUpdater() {
 // When 'parent' ends, make 'this' end as well, taking the end value
 // from 'this.master'.
 Stream.prototype.linkEnds = function(parent) {
+	this.ends().unlink();
+	
+	// TODO unlink
 	this.ends().link(parent.ends(), masterUpdater);
 	return this;
 };
