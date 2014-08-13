@@ -34,7 +34,7 @@
 //
 // Chapter 1 - General utility functions
 // Chapter 2 - Stream() constructor, core methods (?)
-// Chapter # - Stream general methods
+// Chapter 3 - Stream general methods
 // Chaptar # - Stream combinators
 // Chapter # - stream general functions, .link() and stuff
 // Chapter # - stream combinators
@@ -47,7 +47,7 @@
 //
 
 //
-// Chapter 1
+// Chapter 1 - Utilities
 //
 // General utility functions, used internally for miscellaneous purposes.
 //
@@ -88,7 +88,7 @@ function copyArray(args) {
 
 
 //
-// Chapter 2
+// Chapter 2 - Stream() and stream()
 //
 // This chapter introduces the Stream() constructor, and its sister, stream().
 //
@@ -165,7 +165,7 @@ stream.Stream = Stream;
 
 
 //
-// Chapter # - Stream general utilities
+// Chapter 3 - Stream: general methods
 //
 
 // Set the initial value of a stream to a given value 'silently',
@@ -313,28 +313,25 @@ Stream.prototype.log = function(prefix) {
 }
 
 
-// Link stream to one or more parents.
+// Link this stream to one or more parents.
 //
-// stream.link(
-//     Stream parent, Stream child,
-//     Function updater, Function f = null) -> Stream
+// link(Stream parent, Function updater, Function f = null) -> Stream
 //
-// stream.link(
-//     [Stream] parents, Stream child,
-//     Function updater, Function f = null) -> Stream
+// link([Stream] parents, Function updater, Function f = null) -> Stream
 //
-// Establish a dependency relationship a between a stream ('child') and
-// one or more dependencies ('parents').
+// Establish a dependency relationship a between this stream and one or more
+// dependencies ('parents').
 //
-// Set child.parents to parents, child.updater to updater, and child.f
+// Assumes that the stream has no parents. (.unlink() it first if necessary.)
+//
+// Set this.parents to parents, this.updater to updater, and this.f
 // to f.
 //
-// Whenever a parent is updated within a transaction, 'updater' will be
-// called with 'child' as 'this'.  'updater' will only be called once
-// per transaction, and only after all of child's parents have been
-// updated.
+// Whenever a parent is updated within a transaction, 'this.updater' will be
+// called.  'updater' will only be called once per transaction, and only
+// after all of child's parents have been updated.
 //
-// It should set 'this.newValue' if it wants to update 'child''s value,
+// It should set 'this.newValue' if it wants to update this stream's value,
 // and otherwise do nothing.  The 'newValue' attribute of parent streams
 // has been set for those parents that were updated during this tick.
 //
@@ -356,10 +353,6 @@ Stream.prototype.link = function(parents, updater, f) {
 
 	return this;
 };
-
-
-
-
 
 // Update my value to 'value'.
 //
@@ -446,10 +439,28 @@ Stream.prototype.end = function end() {
 //
 // I.e. is it safe to call .update() on this stream
 Stream.prototype.ended = function ended() {
-	// This is ugly, and not even correct. TODO FIXME
+	// This is ugly, and not even correct. (If stream without
+	// ever getting a value, end() will be updated with undefined and
+	// this will return the wrong result.)
+	// TODO FIXME
 	return !!this.endStream && mostRecentValue(this.endStream) !== undefined;
 };
 
+
+
+
+
+//
+// Chapter 4 - Stream combinators
+//
+// TODO figure out a better name for 'combinators' -- operators?
+// what are map and filter and so on? merge and combine are combinators
+//
+// Combinators
+// map, filter, etc.
+//
+
+// Updater function for Stream.map().
 function mapUpdater(parent) {
 	this.newValue = this.f(parent.newValue);
 }
@@ -463,12 +474,16 @@ function mapUpdater(parent) {
 // s2: 2 2 3 3 6 7 7
 //
 // TODO map is just stream.combine(this, f).
+// OR stream.merge(this, f).
 // Should we implement it in terms of a more complex and generalized
 // function or leave it as is?
+// TODO if .combine() should pull its value, .map() should, too.
+// Perhaps .filter() as well.
 Stream.prototype.map = function map(f) {
 	return stream().link(this, mapUpdater, f).linkEnds(this);
 };
 
+// Updater function for Stream.filter().
 function filterUpdater(parent) {
 	if (this.f(parent.newValue)) {
 		this.newValue = parent.newValue;
@@ -668,8 +683,6 @@ function masterUpdater() {
 // from 'this.master'.
 Stream.prototype.linkEnds = function(parent) {
 	this.ends().unlink();
-	
-	// TODO unlink
 	this.ends().link(parent.ends(), masterUpdater);
 	return this;
 };
