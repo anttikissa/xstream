@@ -121,12 +121,50 @@ Streams' `update()` should not be called if none of their parents were updated:
 	s.tick();
 	// -> 2
 
+Calling `end` for a range of 1 number:
+
+	var s = stream.fromRange(1);
+	s.forEach(log);
+	s.tick(); // -> 1
+	s.end();
+	s.tick(); // no effect
+
+Calling `end` for a range of 5 numbers:
+
+	var s = stream.fromRange(1);
+	s.forEach(log);
+	s.tick(5); // -> 1; 2; 3; 4; 5
+	s.end();
+	s.tick(); // no effect
+
+Calling `end` within a .forEach handler:
+
+	var s = stream.fromRange(1);
+	s.forEach(function(value) {
+		console.log(value);
+		if (value === 5) {
+			s.end();
+		}
+	});
+	s.tick(5); // -> 1; 2; 3; 4; 5
+	s.tick(); // no effect
+
+`endWhen` works, too:
+
+	var s = stream.fromRange(1).forEach(log);
+	s.endWhen(5);
+	s.ends().forEach(function() { console.log('end'); });
+	s.tick(10);
+	// -> 1; 2; 3; 4; 5; end
+
 `end` should end the stream:
 
+	// TODO enable then end() works with empty streams
 	var s = stream();
 	s.end();
 	console.log(s.ended());
 	// x-> true
 
+`
 End.
 

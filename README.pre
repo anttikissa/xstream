@@ -1,6 +1,15 @@
 
 # TODO (because this still is mostly for myself)
 
+- Stream.sample() that calls a function on every tick, but it's a
+  generator so you can just say Stream.sample(Math.random).interval(100)
+  to have it update every 100 ms
+- .interval(ms) for every generator
+- rename (mostly) internal methods like ensureNoCyclicalDependencies
+  to start with underscore
+- think about end()
+- update() logic is documented in multiple places, which is the
+  best one?
 - reenable test "`leave(n)` is `n` (+ X -- find out why!) ticks behind
   its parent stream." and figure out how many ticks it SHOULD be behind.
 - think of what should happen for generators when .end() is called?

@@ -25,18 +25,23 @@
 //     stream.<functionName> = function() { ... };,
 //
 // so if you're looking e.g. for the definition of 'fromArray', just search
-// for the string "fromArray =".  Likewise for Stream's methods, which are
-// defined using the syntax
+// for the string "fromArray =".
+//
+// Likewise for Stream's methods, which are defined using the syntax
 //
 //    Stream.prototype.<methodName> = function() { ... };
 //
-// This file is divided into chapters
+// By convention, when speaking of a Stream's method, the '.prototype' part
+// is omitted and we just speak about Stream.map, Stream.filter, etc.
+//
+//
+// This file is divided into chapters:
 //
 // Chapter 1 - General utility functions
-// Chapter 2 - Stream() constructor, core methods (?)
+// Chapter 2 - Stream() constructor
 // Chapter 3 - Stream general methods
-// Chaptar # - Stream combinators
-// Chapter # - stream general functions, .link() and stuff
+// Chapter # - Stream combinators
+// Chapter # - stream general functions (are there any)
 // Chapter # - stream combinators
 // Chapter # - transactions
 // Chapter # - Generators .fromArray() etc.
@@ -90,13 +95,14 @@ function copyArray(args) {
 //
 // Chapter 2 - Stream() and stream()
 //
-// This chapter introduces the Stream() constructor, and its sister, stream().
+// This chapter introduces the Stream() constructor, and its little sister,
+// stream().
 //
 
 //
-// new Stream(Object initial): create a Stream.
+// new Stream(Object initial) -> Stream: Create a Stream.
 //
-// initial: optional initial value, will be updated during the next tick.
+// initial: Optional initial value, will be updated during the next tick.
 //
 // A Stream is an object that has the properties:
 //
@@ -113,13 +119,10 @@ function copyArray(args) {
 //     tick. The listener takes on argument, which is the new value, and its
 //     'this' will be set to the stream that was changed.
 // Function updater: a function that is called after either this.update() has
-//     been called, or one of this stream's parents is updated.  The updater
-//     should either set this stream's .newValue property (which updates the
-//     value of this stream), or do nothing.  A parent stream's .newValue has
-//     been set if and only if it has been updated during this tick.  Updaters
-//     can also use the helper functions hasValue(Stream), hasNewValue(Stream),
-//     and mostRecentValue(Stream) to access the parents' value within the
-//     transaction.
+//     been called, or one of this stream's parents is updated.  See
+//     Stream.update() for a detailed description of updater's semantics.
+// optional Object state: some, but not all, streams have a state, and
+//     this is where it lives.  See for example Stream.take(n)
 //
 // The Stream constructor is available as stream.Stream, but usually it's
 // invoked by calling the function stream().
@@ -140,10 +143,9 @@ function Stream(initial) {
 // Counter for getting the next stream id.
 Stream.nextId = 0;
 
+// stream(Object initial) -> Stream: Create a Stream.
 //
-// stream(Object initial): create a Stream.
-//
-// 'stream' is the main entry point of the library.  It's a function that
+// 'stream' is the main entry point to the library.  It's a function that
 // serves two purposes: first as a shorthand for calling 'new Stream()',
 // and secondly as a namespace for all kinds of functions that don't
 // naturally fit into Stream.prototype.
@@ -151,7 +153,6 @@ Stream.nextId = 0;
 // stream.link
 // stream.combine
 // stream.fromArray (etc)
-//
 function stream(initial) {
 	return new Stream(initial);
 };
@@ -165,11 +166,14 @@ stream.Stream = Stream;
 
 
 //
-// Chapter 3 - Stream: general methods
+// Chapter 3 - Stream general methods
 //
 
-// Set the initial value of a stream to a given value 'silently',
-// without broadcasting it.
+// Stream.withInitialValue(Object value) -> Stream: Initialize my .value.
+//
+// Sets the initial value of a stream to a given value 'silently',
+// without broadcasting it.  Useful when you need to need a value to end
+// with when the parent stream ends without yielding any values.
 //
 // Return this.
 Stream.prototype.withInitialValue = function(value) {
@@ -177,10 +181,21 @@ Stream.prototype.withInitialValue = function(value) {
 	return this;
 };
 
-// Call f(newValue) whenever my value has been updated.
+// Stream.withState(Object state) -> Stream: Initialize my .state.
 //
-// Function(Object value) f: callback function.
-//     When f is called, 'this' will be set to the stream.
+// Return this.
+Stream.prototype.withState = function withState(state) {
+	this.state = state;
+	return this;
+};
+
+// Stream.forEach(Function f) -> Stream: Install .forEach listener.
+//
+// On every tick, if this stream has been updated, call f with the new
+// value. 'this' is set to this stream.
+//
+// So far, there's no way to uninstall listeners.  But .end() should
+// do the trick.
 //
 // Return this.
 Stream.prototype.forEach = function forEach(f) {
@@ -188,16 +203,17 @@ Stream.prototype.forEach = function forEach(f) {
 	return this;
 };
 
-// Tell my listeners that my value has been updated.
+// Stream.broadcast(): Tell my listeners that my value has been updated.
 //
 // Called by stream.tick() after all updaters have been called.
+// For internal use (mostly).
 Stream.prototype.broadcast = function() {
 	for (var i = 0, len = this.listeners.length; i < len; i++) {
 		this.listeners[i].call(this, this.value);
 	}
 };
 
-// CyclicalDependencyError(Stream[] path)
+// stream.CyclicalDependencyError(Stream[] path)
 //
 // A cycle was found when modifying stream dependencies.
 // Property 'path' contains an array of streams that form the cycle.
@@ -208,6 +224,8 @@ function CyclicalDependencyError(path) {
 
 stream.CyclicalDependencyError = CyclicalDependencyError;
 
+// Stream.ensureNoCyclicalDependencies()
+//
 // Ensures that stream's direct and indirect dependencies do not include
 // the stream itself by throwing CyclicalDependencyError if a cycle is
 // found.
@@ -234,17 +252,19 @@ Stream.prototype.ensureNoCyclicalDependencies = function() {
 	return this;
 }
 
-// Try to update my value from 'this.parents' immediately.  Useful for
-// streams generated by stream.combine(), if you don't want to wait for
+// Stream.pull() -> Stream: Pull my value from parents, now.
+//
+// Useful for streams generated by stream.combine(), if you don't want to wait for
 // any of the parent streams to update.
 //
-// Note that this will not go further than to the first ancestors.  If you say,
+// Note that because this does not do the full transaction choreography,
+// this will not go further than to the first ancestors.  If you say,
 // for example,
 //
 //     s.rewire(stream.combine(a, b, f(x, y) { ... }));
 //     s.pull();
 //
-// Then s.pull() won't have any effect because the direct parent stream
+// then s.pull() won't have any effect because the direct parent stream
 // (result of .rewire()) will not have updated.  You'll need to do
 //
 //     s.rewire(stream.combine(a, b, f(x, y) { ...}).pull());
@@ -264,7 +284,7 @@ Stream.prototype.pull = function() {
 	return this;
 };
 
-// Give this stream a name that shows up in .toString() and .inspect() output.
+// Stream.name(String name) -> Stream: Give this stream a name (for debugging).
 //
 // Return this.
 Stream.prototype.name = function(name) {
@@ -272,9 +292,19 @@ Stream.prototype.name = function(name) {
 	return this;
 }
 
+// Stream.log() -> Stream: Log my values.
+// Stream.log(String prefix) -> Stream: Log my values, predeced by 'prefix'.
 //
-// Print useful information about this stream.
-//
+// Return this.
+Stream.prototype.log = function(prefix) {
+	return this.forEach(prefix ? function(value) {
+		console.log(prefix, value);
+	} : function(value) {
+		console.log(value);
+	});
+}
+
+// Stream.toString() -> String: Convert into a descriptive string (debugging).
 Stream.prototype.toString = function() {
 	var result = '[Stream s' + this.id;
 	function show(name, value) {
@@ -298,26 +328,19 @@ Stream.prototype.toString = function() {
 	return result + ']';
 };
 
-// For node.js console
+// Stream.toString() -> String: Convert into a descriptive string (debugging).
+//
+// To make Streams look nice in the Node.js console.
 Stream.prototype.inspect = function() {
 	return this.toString();
 };
 
-// Log my values, optionally with a prefix.
-Stream.prototype.log = function(prefix) {
-	return this.forEach(prefix ? function(value) {
-		console.log(prefix, value);
-	} : function(value) {
-		console.log(value);
-	});
-}
-
 
 // Link this stream to one or more parents.
 //
-// link(Stream parent, Function updater, Function f = null) -> Stream
+// Stream.link(Stream parent, Function updater, Function f = null) -> Stream
 //
-// link([Stream] parents, Function updater, Function f = null) -> Stream
+// Stream.link(Stream[] parents, Function updater, Function f = null) -> Stream
 //
 // Establish a dependency relationship a between this stream and one or more
 // dependencies ('parents').
@@ -335,8 +358,8 @@ Stream.prototype.log = function(prefix) {
 // and otherwise do nothing.  The 'newValue' attribute of parent streams
 // has been set for those parents that were updated during this tick.
 //
+// TODO Combine the documentation above,
 // Return this.
-//
 Stream.prototype.link = function(parents, updater, f) {
 	assert(this.parents.length === 0);
 
@@ -354,26 +377,41 @@ Stream.prototype.link = function(parents, updater, f) {
 	return this;
 };
 
-// Update my value to 'value'.
+// Stream.update(Object value) -> Stream: Update my value to 'value'.
 //
-// Updates happen in ticks.  Ticks are triggered by calling the
-// .update() method of any stream.  During one tick, one stream can
-// update at most once.  The transaction engine ensures that:
+// TODO write better
+//
+// Updates happen in ticks.  Ticks are triggered by calling the .update()
+// method of any stream.  During one tick, one stream can update at most once.
 //
 // - Calling .update() doesn't take effect immediately, but will take
 //   effect eventually (using process.nextTick(), setImmediate(),
 //   setTimeout(..., 1) or similar mechanism)
-// - Parents' updater are called before their children's updater
+// - Parents' updaters are called before their children's updaters
 // - Update handlers are run exactly once for every updated stream
 // - When .forEach() handlers are called, all streams have been updated
 //   (consistent worldview)
 //
-Stream.prototype.update = function update(value) {
+// TODO should the following be here after all?
+//
+// The updater
+//     should either set this stream's .newValue property (which updates the
+//     value of this stream), or do nothing.  A parent stream's .newValue has
+//     been set if and only if it has been updated during this tick.  Updaters
+//     can also use the helper functions hasValue(Stream), hasNewValue(Stream),
+//     and mostRecentValue(Stream) to access the parents' value within the
+//     transaction.
+//
+// Return this.
+Stream.prototype.update = function(value) {
 	stream.transaction().update(this, value);
 	return this;
 };
 
+// Stream.end() -> Stream: End this stream.
+//
 // TODO TODO TODO rethink and rewrite
+// There's probably a cleaner way to do it
 //
 // End this stream, causing this.ends() to update with the most recent
 // value of this stream.
@@ -387,77 +425,157 @@ Stream.prototype.update = function update(value) {
 // next tick.  It works this way so that automatic streams like .fromRange(0)
 // can use .forEach() to schedule the next update, and we can use .end() within
 // a .forEach handler to end them with the current value.
-//
-// TODO there's probably a cleaner way to do it
-//
-Stream.prototype.end = function end() {
-	// TODO should be able to call .end() on a generator at any time,
-	// not just within a commit.  There's no (general) way to check if the update
-	// was scheduled by a human operator an automatic .forEach(), so...
-	//
-	// The bad news is that this hack doesn't work, the good news is
-	// that a better solution must be implemented. 
-	//
-	// Consider the case
-	//
-	// var s = fromRange(1);
-	// s.log();
-	// s.tick(); // -> 1
-	// s.end();
-	// s.tick(); // no effect
-	//
-	// What should happen?
-	//
-	// Then consider
-	//
-	// var s = fromRange(1);
-	// s.log();
-	// s.tick(5); // -> 1; 2; 3; 4; 5
-	// s.end();
-	// s.tick(); // no effect
-	//
-	// Now consider
-	//
-	// var s = fromRange(1);
-	// s.forEach(function(value) {
-	//   console.log(value);
-	//   if (value === 5) {
-	//     s.end();
-	//   }
-	// });
-	// s.tick(5); // -> 1; 2; 3; 4; 5
-	// s.tick(); // no effect
-	if (stream.withinCommit) {
-		this.cancelTransactions();
-	}
-
+Stream.prototype.end = function() {
 	stream.transaction().end(this);
 	return this;
 };
 
-// Has the stream ended?
+// Stream.ended() -> Boolean: Has the stream ended?
 //
-// I.e. is it safe to call .update() on this stream
-Stream.prototype.ended = function ended() {
-	// This is ugly, and not even correct. (If stream without
-	// ever getting a value, end() will be updated with undefined and
-	// this will return the wrong result.)
+// I.e. is it safe to call .update() on this stream.
+Stream.prototype.ended = function() {
 	// TODO FIXME
+	// enable spec/stream.pre: `end` should end the stream:
+	// This is ugly, and not even correct. (If stream ends without
+	// ever yielding a value, end() will be updated with undefined and
+	// this will return the wrong result.)
 	return !!this.endStream && mostRecentValue(this.endStream) !== undefined;
+};
+
+// TODO terminology below;
+// remove vs. detach, dependencies vs. parents/children
+//
+// Remove a child from this stream's dependencies.
+Stream.prototype.removeChild = function(child) {
+	assert(this.children.indexOf(child) !== -1);
+	this.children.splice(this.children.indexOf(child), 1);
+}
+
+// Obliterate parent-child relations between my and my parents.
+Stream.prototype.unlink = function() {
+	for (var i = 0, len = this.parents.length; i < len; i++) {
+		this.parents[i].removeChild(this);
+	}
+	this.parents = [];
+};
+
+// Updater function for Stream.rewire().
+function rewireUpdater(parent) {
+	this.newValue = parent.newValue;
+}
+
+// Stream.rewire(Stream parent) -> Stream
+//
+// Unlink 'this' from its old parents and follow 'parent' instead.
+// Downward dependencies still work: all .forEach() listeners and children
+// streams of 'this' get their values from the new parent.
+//
+// Return this.
+Stream.prototype.rewire = function(newParent) {
+	this.unlink();
+
+	// TODO wrap in try-catch-rewire-to-stream()-rethrow?
+	return this.link(newParent, rewireUpdater).ensureNoCyclicalDependencies().linkEnds(newParent);
+};
+
+// Update value from the most recent value of the master.
+//
+// Makes use of 'master' that has been set in '.ends()'.
+function masterUpdater() {
+	this.newValue = mostRecentValue(this.master);
+}
+
+// Utility function for linking the .ends() streams.
+//
+// When 'parent' ends, end 'this' as well, taking the end value
+// from 'this.master'.
+Stream.prototype.linkEnds = function(parent) {
+	this.ends().unlink();
+	this.ends().link(parent.ends(), masterUpdater);
+	return this;
+};
+
+// Stream.tick(): tick once.
+// Stream.tick(Number times): tick 'times' times.
+//
+// var s = stream(1).tick();
+Stream.prototype.tick = function(times) {
+	stream.tick(times);
+	return this;
+};
+
+// Stream.ends() -> Stream
+//
+// Return a stream that represents the end events of this stream.
+// When this stream ends, the .ends() stream will yield a single
+// value.
+//
+// .ends()
+//
+// The end streams never end, because
+// 1) what's the use?
+// 2) no worrying about ends() of ends() of ends()
+Stream.prototype.ends = function() {
+	if (!this.endStream) {
+		this.endStream = stream();
+		this.endStream.master = this;
+		this.endStream.ends = function() {
+			throw new Error("Don't call .ends() of an .ends(), you silly");
+		};
+	}
+	return this.endStream;
+};
+
+
+// Stream.onEnd(Function f) -> Stream: Install end listener.
+//
+// A shorthand for listening to .ends() stream.  'f(finalValue)' will be
+// called with when this.ends() yields a value, with 'this' set to the
+// master stream.
+//
+// TODO endWhen, endWhenOne, endWhenAll
+// for combine and merge, respectively
+// or are all just special cases?
+//
+// Return this.
+Stream.prototype.onEnd = function(f) {
+	this.ends().forEach(f.bind(this));
+	return this;
+};
+
+// Stream.endWhen(): End stream when it yields 'value'.
+//
+// Return this.
+Stream.prototype.endWhen = function(value) {
+	this.forEach(function(v) {
+		if (v === value) {
+			this.end();
+		}
+	});
+	return this;
 };
 
 
 
-
-
 //
-// Chapter 4 - Stream combinators
+// Chapter 4 - Stream operator methods
 //
-// TODO figure out a better name for 'combinators' -- operators?
-// what are map and filter and so on? merge and combine are combinators
+// This chapter introduces operators that create a Stream out of another
+// Stream.  They are installed as Stream's methods for chaining convenience:
 //
-// Combinators
-// map, filter, etc.
+// var randomNumbers = Stream.sample(Math.random).interval(100);
+// randomNumbers
+//     .filter(function(value) { return value > 0.5; })
+//     .map(function(value) { return 10 * value; }
+//     .log('value');
+//
+// Core operators that operate on a stream's values alone include:
+//
+//    map, filter, uniq, take, skip, leave, slidingWindow
+//
+// Operators that use the global time in addition to the stream:
+//
+//    delay, throttle, debounce, etc.
 //
 
 // Updater function for Stream.map().
@@ -468,18 +586,14 @@ function mapUpdater(parent) {
 // Return a stream whose value is updated with 'f(x)' whenever this
 // stream's value is updated with 'x'.
 //
-// var s2 = s1.map(plusOne);
+// var s2 = s1.map(function(value) { return value + 1; });
 //
 // s1: 1 1 2 2 5 6 6
 // s2: 2 2 3 3 6 7 7
 //
-// TODO map is just stream.combine(this, f).
-// OR stream.merge(this, f).
-// Should we implement it in terms of a more complex and generalized
-// function or leave it as is?
 // TODO if .combine() should pull its value, .map() should, too.
 // Perhaps .filter() as well.
-Stream.prototype.map = function map(f) {
+Stream.prototype.map = function(f) {
 	return stream().link(this, mapUpdater, f).linkEnds(this);
 };
 
@@ -497,38 +611,31 @@ function filterUpdater(parent) {
 //
 // s1: 1 1 2 2 5 6 6
 // s2: 1 1     5
-Stream.prototype.filter = function filter(f) {
+Stream.prototype.filter = function(f) {
 	return stream().link(this, filterUpdater, f);
 };
 
-// Updater function for Stream.filter().
-
+// Updater function for Stream.uniq().
 function uniqUpdater(parent) {
 	if (this.value !== parent.newValue) {
 		this.newValue = parent.newValue;
 	}
 }
 
-// Return a stream whose value is the same as this stream's value,
-// but is only broadcast whenever this stream's value changes.
+// Return a stream that follows its parent's values, but only updates
+// when the value changes.  Similar to the UNIX tool uniq(1).
+//
+// TODO use custom equals function
 //
 // var s2 = s1.uniq()
 //
-// s1: 1 1 2 2 5 6 6 
+// s1: 1 1 2 2 5 6 6
 // s2: 1   2   5 6
-Stream.prototype.uniq = function uniq() {
-	// TODO f could be the equals function?
+Stream.prototype.uniq = function() {
 	return stream().link(this, uniqUpdater);
 };
 
-// A shorthand to initialize stream.state.
-//
-// Return this.
-Stream.prototype.withState = function withState(state) {
-	this.state = state;
-	return this;
-};
-
+// Updater function for Stream.take().
 function takeUpdater(parent) {
 	if (this.state-- <= 0) {
 		return this.end();
@@ -536,12 +643,13 @@ function takeUpdater(parent) {
 	this.newValue = parent.newValue;
 }
 
-// A stream that takes 'n' first elements of its parent stream,
+// Return a stream that yields 'n' first elements of its parent stream,
 // then ends.
-Stream.prototype.take = function take(n) {
+Stream.prototype.take = function(n) {
 	return stream().withState(n).link(this, takeUpdater).linkEnds(this);
 };
 
+// Updater function for Stream.skip().
 function skipUpdater(parent) {
 	if (this.state > 0) {
 		this.state--;
@@ -550,14 +658,15 @@ function skipUpdater(parent) {
 	this.newValue = parent.newValue;
 }
 
-// A stream that skips the 'n' first elements, then follows the parent stream.
-Stream.prototype.skip = function skip(n) {
+// Return a stream that skips the 'n' first elements, then follows the
+// parent stream.
+Stream.prototype.skip = function(n) {
 	return stream().withState(n).link(this, skipUpdater).linkEnds(this);
 };
 
-// A stream that waits until the parent stream has ended, then gives you
+// A stream that waits until the parent stream has ended, then yields
 // the last 'n' elements.
-Stream.prototype.leave = function leave(n) {
+Stream.prototype.leave = function(n) {
 	// Return a stream that stays dormant...
 	var result = stream();
 
@@ -579,30 +688,31 @@ function slidingWindowUpdater(parent) {
 	}
 };
 
-// A stream with an array of at most 'n' latest values of its parent.
+// Return a stream that updates with an array of at most 'n' most recent
+// values of its parent.
 //
 // var s2 = s1.slidingWindow(3);
 //
 // s1: 1   1       2          2        5         6         6
 // s2: [1] [1, 1]  [1, 1, 2] [1, 2, 2] [2, 2, 5] [2, 5, 6] [5, 6, 6]
-
-Stream.prototype.slidingWindow = function slidingWindow(n) {
+Stream.prototype.slidingWindow = function(n) {
 	return stream().withState(n).withInitialValue([])
 		.link(this, slidingWindowUpdater).linkEnds(this);
 };
 
-// Skips 'start' elements, then returns elements until the 'end'th
-// element.
+// Return a stream that skips 'start' elements, then follows its parent
+// until (but not including) the 'end'th element.
 //
-// Similar to Array.prototype.slice, except that slice(-n) doesn't 
-// do what it does on an array.  Use 'leave(n)' for that.
-Stream.prototype.slice = function slice(start, end) {
+// Similar to Array.slice(start, end), but slice(-n) doesn't do what
+// it does on an array.  Use 'leave(n)' for that.
+Stream.prototype.slice = function(start, end) {
 	if (end === undefined) {
 		return this.skip(start);
 	}
 	return this.skip(start).take(end - start);
 }
 
+// Updater function for Stream.reduce().
 function reduceUpdater(parent) {
 	if (this.value !== undefined) {
 		this.newValue = this.f(this.value, parent.newValue);
@@ -611,12 +721,15 @@ function reduceUpdater(parent) {
 	}
 }
 
-// Returns a reduced stream, whose value represents the values of
-// this stream, 'boiled down' by function 'f'.  The first value of
+// Return a reduced stream, whose value represents the values of
+// the parent stream, 'boiled down' by function 'f'.  The first value of
 // the resulting stream is the same as the next value of 'this', or
 // if 'initial' is provided, 'f(initial, next value of this)'.
 //
-// f: function(accumulator, value) -> accumulator'
+// If the parent stream ends without giving any values, end with 'initial'.
+//
+// Function f: accumulator function. f(accumulator, value) should return
+//     the next value of the accumulator.
 //
 // Like Array.prototype.reduce, but provides a view to the reduction
 // process in realtime.
@@ -626,139 +739,27 @@ function reduceUpdater(parent) {
 // s1: 1 1 2 2  5  6  6
 // s2: 1 2 4 6 11 17 23
 //
-// TODO example with 'initial'
+// For an example that uses 'initial', see implementation of
+// Stream.collect() below.
 Stream.prototype.reduce = function(f, initial) {
 	return stream().withInitialValue(initial).link(this, reduceUpdater, f)
 		.linkEnds(this);
 };
 
-// Collect all values of a stream into an array
+// Return a stream that collects all values of a stream into an array.
+//
+// var s2 = s1.collect();
+//
+// s1: 1   1      2         2
+// s2: [1] [1, 2] [1, 1, 2] [1, 1, 2, 2]
 Stream.prototype.collect = function() {
 	return this.reduce(function(array, x) {
 		return array.concat(x);
 	}, []);
 };
 
-function rewireUpdater(parent) {
-	this.newValue = parent.newValue;
-}
-
-// TODO terminology below;
-// remove vs. detach, dependencies vs. parents/children
-//
-// Remove a child from this stream's dependencies.
-Stream.prototype.removeChild = function(child) {
-	assert(this.children.indexOf(child) !== -1);
-	this.children.splice(this.children.indexOf(child), 1);
-}
-
-// Remove all incoming dependencies
-Stream.prototype.detachFromParents = function() {
-	for (var i = 0, len = this.parents.length; i < len; i++) {
-		this.parents[i].removeChild(this);
-	}
-	this.parents = [];
-};
-
-// Obliterate parent-child relations between my and my parents.
-Stream.prototype.unlink = function() {
-	for (var i = 0, len = this.parents.length; i < len; i++) {
-		this.parents[i].removeChild(this);
-	}
-	this.parents = [];
-};
-
-// rewire: (Stream parent) -> Stream
-//
-// Unlink 'this' from its old parents.
-//
-// Add a dependency from 'parent' to 'child'
-// Remove old dependencies
-//
-Stream.prototype.rewire = function(newParent) {
-	this.unlink();
-
-	// TODO wrap in try-catch-rewire-to-stream()-rethrow?
-	return this.link(newParent, rewireUpdater).ensureNoCyclicalDependencies().linkEnds(newParent);
-};
-
-// Update value from the most recent value of the master.
-//
-// Makes use of 'master' that has been set in '.ends()'.
-function masterUpdater() {
-	this.newValue = mostRecentValue(this.master);
-}
-
-// Utility function for linking the .ends() streams.
-//
-// When 'parent' ends, make 'this' end as well, taking the end value
-// from 'this.master'.
-Stream.prototype.linkEnds = function(parent) {
-	this.ends().unlink();
-	this.ends().link(parent.ends(), masterUpdater);
-	return this;
-};
-
-// A shorthand, to enable:
-//
-// var s = stream(1).tick();
-Stream.prototype.tick = function(times) {
-	stream.tick(times);
-	return this;
-};
-
-// TODO there are more than one smells to this one
-// - name: it's not canceling the whole transaction, only the actions that
-// target this stream
-// - it's touching Transaction's internals directly
-// - still it's a valid way to .end() a stream that has transactions 
-// in the transaction queue
-// - maybe a cleaner way would be to mark them as .ended or something
-Stream.prototype.cancelTransactions = function() {
-	var tx = stream.transaction();
-	var that = this;
-	tx.actions = tx.actions.filter(function(action) {
-		return action.stream !== that;
-	});
-};
-
-Stream.prototype.ends = function() {
-	if (!this.endStream) {
-		this.endStream = stream();
-		this.endStream.master = this;
-		this.endStream.ends = function() {
-			throw new Error("Don't call .ends() of an .ends(), you silly");
-		};
-	}
-	return this.endStream;
-};
-
-// TODO endWhen, endWhenOne, endWhenAll
-// for combine and merge, respectively
-// or are all just special cases?
-
-// Shorthand
-Stream.prototype.onEnd = function(f) {
-	this.ends().forEach(f.bind(this));
-};
-
-// End stream when 'value' encountered
-Stream.prototype.endWhen = function(value) {
-	this.forEach(function(v) {
-		if (v === value) {
-			this.end();
-		}
-	});
-	return this;
-};
-
 // Will updates automatically schedule a commit?
 stream.autoCommit = true;
-
-// HACK HACK HACK
-// To enable .end() to work correctly when it's called
-// during the commit phase
-stream.withinCommit = false;
 
 stream.nextTick = 0;
 
@@ -1238,7 +1239,7 @@ EndAction.prototype.preUpdate = function preUpdate() {
 };
 
 EndAction.prototype.postUpdate = function postUpdate() {
-	this.stream.detachFromParents();
+	this.stream.unlink();
 };
 
 EndAction.prototype.toString = EndAction.prototype.inspect = function() {
@@ -1347,8 +1348,6 @@ function updateOrder(nodes) {
 // ..., end(s), update(s, x), ... should be error
 //
 Transaction.prototype.commit = function() {
-	stream.withinCommit = true;
-
 	// Ensure that stream.ticks is always in the update queue.
 	stream.ticks.update();
 
@@ -1410,7 +1409,6 @@ Transaction.prototype.commit = function() {
 		if (stream.tx === this) {
 			delete stream.tx;
 		}
-		stream.withinCommit = false;
 	}
 };
 
