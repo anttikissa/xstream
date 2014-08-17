@@ -37,24 +37,25 @@
 //
 // This file is divided into chapters:
 //
-// Chapter 1 - General utility functions
-// Chapter 2 - Stream() constructor
+// Chapter 1 - Internal utilities
+// Chapter 2 - Stream() and stream()
 // Chapter 3 - Stream general methods
-// Chapter # - Stream combinators
-// Chapter # - stream general functions (are there any)
-// Chapter # - stream combinators
-// Chapter # - transactions
-// Chapter # - Generators .fromArray() etc.
-// Chapter # - utils
-// Chapter # - misc development/debug stuff (speedTest?)
+// Chapter 4 - Stream operators
+// Chapter 5 - stream general functions
+// Chapter 6 - stream combinators
+// Chapter 7 - Metastream operators
+// Chapter 8 - Generators
+// Chapter 9 - Utilities (stream.util)
+// Chapter 10 - Misc development/debug stuff (speedTest?)
 //
 // Enjoy!
 //
 
 //
-// Chapter 1 - Utilities
+// Chapter 1 - Internal utilities
 //
 // General utility functions, used internally for miscellaneous purposes.
+// Feel free to skip to the next chapter.
 //
 
 // Like console.log but shorter to write and can be passed around as a function.
@@ -575,7 +576,7 @@ Stream.prototype.endWhen = function(value) {
 
 
 //
-// Chapter 4 - Stream operator methods
+// Chapter 4 - Stream operators
 //
 // This chapter introduces operators that create a Stream out of another
 // Stream.  They are installed as Stream's methods for chaining convenience:
@@ -779,15 +780,14 @@ Stream.prototype.collect = function() {
 
 
 //
-// Chapter # - stream general methods
+// Chapter 5 - stream general functions
 //
 // Methods and variables installed directly to 'stream'.
 //
 // Mostly for internal use.
 //
-
-// Will updates automatically schedule a commit?
-stream.autoCommit = true;
+// Plus 'tick()'.
+//
 
 // stream.ticks is a special stream that is updated automatically on every
 // tick.
@@ -823,10 +823,10 @@ stream.tick = function tick(times) {
 
 
 //
-// Chapter # - stream combinators
+// Chapter 6 - stream combinators
 //
-// Operators that combine multiple streams are live in the 'stream'
-// namespace.  They include:
+// Operators that combine multiple streams live in the 'stream'
+// namespace and are called combinators.  They include:
 //
 // merge, combine,
 //
@@ -961,7 +961,19 @@ stream.zip = function() {
 };
 
 //
-// Chapter # - Generator streams
+// Chapter 7 - Metastream operators
+//
+// Metastreams are streams whose values are streams.
+//
+// Sounds more complex than it is. Example:
+//
+// TODO
+//
+// Then explain the whole duality. parallel/series
+//
+
+//
+// Chapter 8 - Generators
 //
 // Generators are streams that produce values until they end.  After yielding
 // a value, a generator automatically schedules the next tick (unless it has
@@ -1165,6 +1177,8 @@ stream.speedtest = function speedtest() {
 
 
 //
+// Chapter 9 - Utilities (stream.util)
+//
 // A collection of useful functions.
 //
 
@@ -1204,6 +1218,8 @@ stream.util.isOdd = function isOdd(a) { return !!(a % 2); }
 // Utilities used by Transaction
 //
 
+// TODO move somewhere...
+
 // Find first element in array that satisfies test(element), or undefined
 function find(array, test) {
 	for (var i = 0, len = array.length; i < len; i++) {
@@ -1214,6 +1230,7 @@ function find(array, test) {
 	}
 }
 
+// Implementation of 'defer' using process.nextTick()
 function deferNextTick(f) {
 	var canceled = false;
 
@@ -1230,6 +1247,7 @@ function deferNextTick(f) {
 	};
 }
 
+// Implementation of 'defer' using setTimeout()
 function deferTimeout(f) {
 	var timeout = setTimeout(f);
 	return function() {
@@ -1237,9 +1255,11 @@ function deferTimeout(f) {
 	};
 }
 
-// Do 'f' at a later time. Return a function that can be called to
+// defer(Function f) -> Function
+// Call 'f' at a later time. Return a function that can be called to
 // cancel the the deferred call.
-var defer = typeof process !== 'undefined' && process.nextTick ? deferNextTick : deferTimeout;
+var defer = typeof process !== 'undefined' && process.nextTick
+	? deferNextTick : deferTimeout;
 
 //
 // Transaction
@@ -1248,11 +1268,9 @@ var defer = typeof process !== 'undefined' && process.nextTick ? deferNextTick :
 //
 function Transaction() {
 	var that = this;
-	if (stream.autoCommit) {
-		this.cancel = defer(function() {
-			that.commit();
-		});
-	}
+	this.cancel = defer(function() {
+		that.commit();
+	});
 	this.actions = [];
 }
 
