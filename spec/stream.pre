@@ -185,7 +185,7 @@ Calling `end` within a .forEach handler:
 `log` works (in tests):
 
 	stream.fromRange(1, 5).log().tick(5);
-	// -> 0; 1; 2; 3; 4; 5
+	// -> 1; 2; 3; 4; 5
 
 
 

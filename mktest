@@ -57,12 +57,16 @@ args.forEach(function(filename) {
 				testLines.push('//');
 				prevComment.map(prepend('// ')).forEach(push);
 				prevComment = [];
-				push('(function(console) {');
+				push('tests.push(function() {');
+//				push('\tconsole.realLog = console.log;');
+//				push('\tvar recordingLog = makeConsole();');
+//				push('\tconsole.log = recordingLog; try {');
 				afterFunction = '\tstream.tick();\n' + 
-					'})(console(\'' + testDescription + '\'));';
+					'\t\n' +
+					'});';
 				var enabled = minTest <= testIdx && testIdx <= maxTest;
 				if (enabled) {
-					push("\tglobal.console.log('" + testDescription + "');");
+					push("\tconsole.realLog('" + testDescription + "');");
 				}
 			}
 			if (line.match('// later')) {
@@ -87,11 +91,11 @@ args.forEach(function(filename) {
 			if (assertPrintedMatch) {
 				var matches = assertPrintedMatch[1].split('; ');
 				matches.forEach(function(output) {
-					push("\tassertPrinted(console, '" + escape(output) + "');");
+					push("\tassertPrinted(console.log, '" + escape(output) + "');");
 				});
 			}
 			if (line.match(/\/\/ no effect/)) {
-				push("\tlater(function() { assertPrinted(console, null); });");
+				push("\tlater(function() { assertPrinted(console.log, null); });");
 			}
 			prevLineType = 'code';
 		} else {
@@ -116,9 +120,9 @@ args.forEach(function(filename) {
 	}
 });
 
-var testJs = fs.readFileSync('misc/test-prelude.js', 'utf8') +
-	testLines.join('\n') +
-	'\n})();\n';
+var before = fs.readFileSync('misc/test-before.js', 'utf8');
+var after = fs.readFileSync('misc/test-after.js', 'utf8');
+var testJs = before + testLines.join('\n') + after;
 
 console.log(testJs);
 
