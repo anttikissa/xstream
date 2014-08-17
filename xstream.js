@@ -91,6 +91,24 @@ function copyArray(args) {
 	return Array.prototype.slice.apply(args);
 }
 
+// Has stream been updated during this tick or before?
+function hasValue(s) {
+	return mostRecentValue(s) !== undefined;
+}
+
+// Has stream been updated during this tick?
+function hasNewValue(s) {
+	return s.hasOwnProperty('newValue');
+}
+
+// Return .newValue if exists, otherwise .value
+function mostRecentValue(s) {
+	if (s.hasOwnProperty('newValue'))
+		return s.newValue;
+	return s.value;
+}
+
+
 
 //
 // Chapter 2 - Stream() and stream()
@@ -526,7 +544,6 @@ Stream.prototype.ends = function() {
 	return this.endStream;
 };
 
-
 // Stream.onEnd(Function f) -> Stream: Install end listener.
 //
 // A shorthand for listening to .ends() stream.  'f(finalValue)' will be
@@ -574,6 +591,7 @@ Stream.prototype.endWhen = function(value) {
 //    map, filter, uniq, take, skip, leave, slidingWindow
 //
 // Operators that use the global time in addition to the stream:
+// TODO
 //
 //    delay, throttle, debounce, etc.
 //
@@ -758,15 +776,32 @@ Stream.prototype.collect = function() {
 	}, []);
 };
 
+
+
+//
+// Chapter # - stream general methods
+//
+// Methods and variables installed directly to 'stream'.
+//
+// Mostly for internal use.
+//
+
 // Will updates automatically schedule a commit?
 stream.autoCommit = true;
 
-stream.nextTick = 0;
-
-stream.ticks = stream();
-
+// stream.ticks is a special stream that is updated automatically on every
+// tick.
+//
+// It's useful for writing generators, which are streams that are
+// updated on every tick.  For now, though, you have to call .update() on
+// it in order to trigger updates on the dependent streams, to avoid
+// stream.ticks() just ticking forever.
+//
+// TODO there should be a better solution to make streams stop after they
+// have ticked without any listeners for a while.  Should there?
+stream.ticks = stream().withState(0);
 stream.ticks.updater = function() {
-	this.newValue = stream.nextTick++;
+	this.newValue = this.state++;
 };
 
 // Get the current transaction or create one.
@@ -785,25 +820,159 @@ stream.tick = function tick(times) {
 	return stream;
 }
 
-// Make a stream out of pretty much anything.
+
+
 //
-// stream.from(String) -> Stream
-// stream.from([Object]) -> Stream
-// stream.from(Object...) -> Stream
-stream.from = function from(first) {
-	if (arguments.length === 1) {
-		if (typeof first === 'string') {
-			return stream.fromString(first);
-		}
-		if (first instanceof Array) {
-			return stream.fromArray(first);
-		}
-		// TODO promises, callbacks, generators, etc.
-		// Fall back to '.fromValues'.
-	}
-	return stream.fromValues.apply(stream, arguments);
+// Chapter # - stream combinators
+//
+// Operators that combine multiple streams are live in the 'stream'
+// namespace.  They include:
+//
+// merge, combine,
+//
+// TODO sampledBy, takeUntil,
+// TODO where to put .concatAll, .mergeAll, .followLatest, .mergeFirst, etc.?
+//
+
+function combine2Updater(firstParent, secondParent) {
+	this.newValue = this.f(
+		mostRecentValue(firstParent),
+		mostRecentValue(secondParent));
 }
 
+// TODO is this necessary?
+function combine3Updater(firstParent, secondParent, thirdParent) {
+	this.newValue = this.f(
+		mostRecentValue(firstParent),
+		mostRecentValue(secondParent),
+		mostRecentValue(thirdParent));
+}
+
+function combineUpdater() {
+	var values = this.parents.map(mostRecentValue);
+	this.newValue = this.f.apply(null, values);
+};
+
+// stream.combine(Stream streams..., f) -> Stream
+// TODO link .ends()
+// TODO document
+stream.combine = function combine() {
+	var parents = copyArray(arguments);
+	var f = parents.pop();
+	var updater =
+		parents.length === 2 ? combine2Updater :
+		parents.length === 3 ? combine3Updater :
+		combineUpdater;
+
+	return stream().link(parents, updater, f);
+}
+
+function combineWhenAll2Updater(firstParent, secondParent) {
+	if (hasValue(firstParent) && hasValue(secondParent)) {
+		this.newValue = this.f(
+			mostRecentValue(firstParent),
+			mostRecentValue(secondParent));
+	}
+}
+
+// TODO is this necessary?
+function combineWhenAll3Updater(firstParent, secondParent, thirdParent) {
+	if (hasValue(firstParent) && hasValue(secondParent) &&
+		hasValue(thirdParent)) {
+		this.newValue = this.f(
+			mostRecentValue(firstParent),
+			mostRecentValue(secondParent),
+			mostRecentValue(thirdParent));
+	}
+}
+
+function combineWhenAllUpdater() {
+	if (this.parents.every(hasValue)) {
+		var values = this.parents.map(mostRecentValue);
+		this.newValue = this.f.apply(null, values);
+	}
+};
+
+// TODO link .ends()
+stream.combineWhenAll = function combineWhenAll() {
+	var parents = copyArray(arguments);
+	var f = parents.pop();
+	var updater =
+		parents.length === 2 ? combineWhenAll2Updater :
+		parents.length === 3 ? combineWhenAll3Updater :
+		combineWhenAllUpdater;
+
+	return stream().link(parents, updater, f);
+}
+
+function merge2Updater(firstParent, secondParent) {
+	if (hasNewValue(firstParent)) {
+		this.newValue = firstParent.newValue;
+	}
+	if (hasNewValue(secondParent)) {
+		this.newValue = secondParent.newValue;
+	}
+}
+
+function mergeUpdater() {
+	// arguments === this.parents
+	for (var i = 0, len = arguments.length; i < len; i++) {
+		if (hasNewValue(arguments[i])) {
+			this.newValue = arguments[i].newValue;
+		}
+	}
+}
+
+// stream.merge(Stream streams...) -> Stream: Merge multiple streams.
+//
+// Return a stream the updates whenever one of its parent streams update.
+//
+// If two or more parent streams are updated during the same tick, the
+// one that comes last in the argument list will take effect. (Note that
+// the order in which the update()s are scheduled doesn't matter.)
+//
+// var s3 = stream.merge(s1, s2);
+//
+// s1: 1   1   2   2    5     6    6
+// s2:   a   b   c      d   e   f
+// s3: 1 a 1 b 2 c 2    d   d 6 f  6
+stream.merge = function merge() {
+	var parents = copyArray(arguments);
+	var updater =
+		parents.length === 2 ? merge2Updater :
+		mergeUpdater;
+	return stream().link(parents, updater);
+}
+
+// stream.zip(Stream streams...-> Stream
+//
+// Return a stream of arrays of parent streams' values.
+// The stream will be updated whenever one of parent streams updates.
+//
+// var s3 = stream.zip(s1, s2);
+//
+// s1: 1                     1             2
+// s2:                a             b      c
+// s3: [1, undefined] [1, a] [1, a] [1, b] [2, c]
+stream.zip = function() {
+	var args = copyArray(arguments);
+	args.push(Array);
+	return stream.combine.apply(null, args);
+};
+
+//
+// Chapter # - Generator streams
+//
+// Generators are streams that produce values until they end.  After yielding
+// a value, a generator automatically schedules the next tick (unless it has
+// ended).
+//
+// I'm not totally sold on this concept, but it seems interesting and there
+// might be some interesting use cases for these.
+//
+
+
+// Updater function for stream.for().
 function forUpdater() {
 	if (this.ended()) {
 		return;
@@ -818,13 +987,16 @@ function forUpdater() {
 	stream.ticks.update();
 }
 
-// Return a generator stream.
+// Stream.for(Object initialState, Function condition, Function f) -> Stream
 //
-// initialState: set to resulting stream's .state
-// f: called on each tick. Should modify this.state and return the next
-// value.
-// ended: inspect this.state to see if the stream has ended.  
+// Return a generic generator stream.
 //
+// initialState: Resulting stream's .state will be set to this.
+// condition: Keep running as long as this function returns a truthy value.
+// f: Produce the next value and update this.state.
+//
+// 'for' is used like a for loop, except that 'f' is responsible
+// for both updating the internal state and producing a
 // As an example, a counter that counts from 1 to 5:
 //
 // stream.generator(
@@ -852,7 +1024,6 @@ stream.for = function(initialState, condition, f) {
 		// transparency ('ended' can't be retrieved from the resulting
 		// object directly), duplicates code, etc.
 		// Get rid of this hack!
-		// See Stream.prototype.ended(), too.
 		result.ended = function() {
 			if (this.endStream && mostRecentValue(this.endStream) !== undefined)
 				return true;
@@ -877,12 +1048,12 @@ stream.loop = function loop(initialState, f) {
 	return stream.for(initialState, alwaysTrue, f);
 };
 
-// Count numbers from 'initial'.
+// stream.count(Number initial) -> Stream: Count numbers from 'initial'.
+//
+// Functionally identical .fromRange(initial), but more like an example
+// of how to use 'loop'.
 stream.count = function(initial) {
-	return stream.loop(
-		initial || 0,
-		function() { return this.state++; }
-		);
+	return stream.loop(initial || 0, function() { return this.state++; });
 };
 
 // Make a stream from an array.
@@ -925,14 +1096,33 @@ stream.fromValues = function fromValues() {
 	return stream.fromArray.call(stream, args);
 };
 
-// Make a stream from a string's characters.
+// stream.fromString(String string) -> Stream
 //
-// stream.fromString(String) -> Stream
+// Return a generator that produces all characters in 'string', then ends.
 //
 // stream.fromString('abc') is equal to stream.fromArray('a', 'b', 'c').
 stream.fromString = function fromString(string) {
 	return stream.fromArray(string.split(''));
 };
+
+// Make a generator stream out of pretty much anything.
+//
+// stream.from(String) -> Stream: Delegate to stream.fromString()
+// stream.from([Object]) -> Stream: Delegate to stream.fromArray()
+// stream.from(Object...) -> Stream: Delegate to stream.fromValues()
+stream.from = function from(first) {
+	if (arguments.length === 1) {
+		if (typeof first === 'string') {
+			return stream.fromString(first);
+		}
+		if (first instanceof Array) {
+			return stream.fromArray(first);
+		}
+		// TODO promises, callbacks, generators, etc.
+		// Fall back to '.fromValues'.
+	}
+	return stream.fromValues.apply(stream, arguments);
+}
 
 // Maybe not the right place for this
 stream.speedtest = function speedtest() {
@@ -973,138 +1163,6 @@ stream.speedtest = function speedtest() {
 	setTimeout(function() { counter(reporter('counter')); }, 1000);
 }
 
-// Has stream been updated during this tick or before?
-function hasValue(s) {
-	return mostRecentValue(s) !== undefined;
-}
-
-// Has stream been updated during this tick?
-function hasNewValue(s) {
-	return s.hasOwnProperty('newValue');
-}
-
-// Return .newValue if exists, otherwise .value
-function mostRecentValue(s) {
-	if (s.hasOwnProperty('newValue'))
-		return s.newValue;
-	return s.value;
-}
-
-function combine2Updater(firstParent, secondParent) {
-	this.newValue = this.f(
-		mostRecentValue(firstParent),
-		mostRecentValue(secondParent));
-}
-
-// TODO is this necessary?
-function combine3Updater(firstParent, secondParent, thirdParent) {
-	this.newValue = this.f(
-		mostRecentValue(firstParent),
-		mostRecentValue(secondParent),
-		mostRecentValue(thirdParent));
-}
-
-function combineUpdater() {
-	var values = this.parents.map(mostRecentValue);
-	this.newValue = this.f.apply(null, values);
-};
-
-function combineWhenAll2Updater(firstParent, secondParent) {
-	if (hasValue(firstParent) && hasValue(secondParent)) {
-		this.newValue = this.f(
-			mostRecentValue(firstParent),
-			mostRecentValue(secondParent));
-	}
-}
-
-// TODO is this necessary?
-function combineWhenAll3Updater(firstParent, secondParent, thirdParent) {
-	if (hasValue(firstParent) && hasValue(secondParent) && 
-		hasValue(thirdParent)) {
-		this.newValue = this.f(
-			mostRecentValue(firstParent),
-			mostRecentValue(secondParent),
-			mostRecentValue(thirdParent));
-	}
-}
-
-function combineWhenAllUpdater() {
-	if (this.parents.every(hasValue)) {
-		var values = this.parents.map(mostRecentValue);
-		this.newValue = this.f.apply(null, values);
-	}
-};
-
-
-// stream.combine(Stream streams..., f) -> Stream
-// TODO link .ends()
-// TODO document
-stream.combine = function combine() {
-	var parents = copyArray(arguments);
-	var f = parents.pop();
-	var updater = parents.length === 2 ? combine2Updater :
-		parents.length === 3 ? combine3Updater :
-		combineUpdater;
-
-	return stream().link(parents, updater, f);
-}
-
-// TODO link .ends()
-stream.combineWhenAll = function combineWhenAll() {
-	var parents = copyArray(arguments);
-	var f = parents.pop();
-	var updater = parents.length === 2 ? combineWhenAll2Updater :
-		parents.length === 3 ? combineWhenAll3Updater :
-		combineWhenAllUpdater;
-
-	return stream().link(parents, updater, f);
-}
-
-function merge2Updater(firstParent, secondParent) {
-	if (hasNewValue(firstParent)) {
-		this.newValue = firstParent.newValue;
-	}
-	if (hasNewValue(secondParent)) {
-		this.newValue = secondParent.newValue;
-	}
-}
-
-function mergeUpdater() {
-	// arguments === this.parents
-	for (var i = 0, len = arguments.length; i < len; i++) {
-		if (hasNewValue(arguments[i])) {
-			this.newValue = arguments[i].newValue;
-		}
-	}
-}
-
-// stream.merge(Stream streams...) -> Stream
-// TODO document
-stream.merge = function merge() {
-	var parents = copyArray(arguments);
-	var updater = parents.length === 2 ? merge2Updater : mergeUpdater;
-	return stream().link(parents, updater);
-}
-
-// Take n streams and make a stream of arrays from them that is updated
-// whenever one of the source streams is updated.
-//
-// stream.zip(stream1, stream2, ...) -> Stream
-//
-// Example:
-//
-// var s1 = stream.fromValues(1, 2, 3);
-// var s2 = stream.fromString('abc');
-// stream.zip(s1, s2).forEach(function(x) { console.log(x); });
-// // -> [ 1, 'a' ]; [ 2, 'b' ]; [ 3, 'c' ]
-// 
-// TODO better example?
-//
-stream.zip = function() {
-	var args = copyArray(arguments);
-	args.push(Array);
-	return stream.combine.apply(null, args);
-};
 
 //
 // A collection of useful functions.

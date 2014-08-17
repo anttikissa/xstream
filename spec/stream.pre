@@ -165,6 +165,29 @@ Calling `end` within a .forEach handler:
 	console.log(s.ended());
 	// x-> true
 
-`
+`merge` with two parent streams updating should dump the first:
+
+	var s1 = stream();
+	var s2 = stream();
+	var s3 = stream.merge(s1, s2).forEach(log);
+
+	s1.update(1).tick(); // -> 1
+	s2.update('a').tick(); // -> a
+	s1.update(2);
+	s2.update('b');
+	stream.tick();
+	// -> b
+	s2.update('c');
+	s1.update(3);
+	stream.tick();
+	// -> c
+
+`log` works (in tests):
+
+	stream.fromRange(1, 5).log().tick(5);
+	// -> 0; 1; 2; 3; 4; 5
+
+
+
 End.
 
