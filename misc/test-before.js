@@ -43,7 +43,7 @@ function fail(message, stack, console) {
 }
 
 function later(f) {
-	setTimeout(f, 10);
+	setTimeout(f, 1);
 }
 
 function assertPrinted(log, str) {

@@ -328,13 +328,11 @@ it's the same as the old value:
 	var s = stream();
 	s.forEach(log);
 	s.update(1);
-	setTimeout(function() {
-		// -> 1
-		s.update(1);
-		setTimeout(function() {
-			// -> 1
-		}, 10);
-	}, 10);
+	s.tick();
+	// -> 1
+	s.update(1);
+	s.tick();
+	// -> 1
 
 However you can get a stream that only broadcasts its value when it
 changes with `stream.uniq()` (similar to Unix tool `uniq(1)`)
@@ -342,13 +340,11 @@ changes with `stream.uniq()` (similar to Unix tool `uniq(1)`)
 	var s = stream();
 	s.uniq().forEach(log);
 	s.update(1);
-	setTimeout(function() {
-		// -> 1
-		s.update(1);
-		setTimeout(function() {
-			// no effect
-		}, 10);
-	}, 10);
+	s.tick();
+	// -> 1
+	s.update(1);
+	s.tick();
+	// no effect
 
 You can map streams into other streams.
 

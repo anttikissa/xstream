@@ -1,6 +1,6 @@
 var realLog = console.log.bind(console);
 
-var TIME = 40;
+var TIME = 5;
 
 // TODO make use of a concept like 'test is done' and somehow arrange
 // following tests to only start after the previous test is done; this
