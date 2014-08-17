@@ -182,11 +182,17 @@ Calling `end` within a .forEach handler:
 	stream.tick();
 	// -> c
 
-`log` works (in tests):
+`log` works in tests:
 
 	stream.fromRange(1, 5).log().tick(5);
 	// -> 1; 2; 3; 4; 5
 
+`log(prefix)` works in tests:
+
+	var s = stream.fromRange(1, 3).log();
+	s.ends().log('end');
+	stream.tick(6);
+	// -> 1; 2; 3; end 3
 
 
 End.
