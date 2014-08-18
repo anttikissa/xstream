@@ -844,11 +844,6 @@ stream.ticks.updater = function() {
 	this.newValue = this.state++;
 };
 
-// Get the current transaction or create one.
-stream.x = function() {
-	return stream.tx || (stream.tx = new Transaction());
-};
-
 // Update and end actions are collected into stream.actionQueue, which
 // is then handled by stream.tick().
 stream.actionQueue = [];
@@ -866,7 +861,6 @@ stream.onNextTick = function(action) {
 		});
 	}
 };
-
 
 function UpdateAction(stream, value) {
 	this.stream = stream;
@@ -917,6 +911,7 @@ EndAction.prototype.toString = EndAction.prototype.inspect = function() {
 	return 'end(s' + this.stream.id + ')';
 };
 
+// updateOrder(Stream[] streams)
 // Given an array of streams to update, create a graph of those streams
 // and their dependencies and return a topological ordering of that graph
 // where parents come before their children.
@@ -937,7 +932,6 @@ function updateOrder(nodes) {
 	// Find all nodes reachable from 'node'
 	// and record into 'parentCounts' the amount of incoming edges
 	// within this graph.
-	// TODO detect cyclical dependencies, eventually
 	function findNodesToUpdate(node) {
 		if (allNodes.hasOwnProperty(node.id)) {
 			// We have already calculated the parent counts descending
@@ -952,11 +946,6 @@ function updateOrder(nodes) {
 	}
 
 	nodes.forEach(function(node) {
-		// This assumption is false if someone has update()d a node
-		// that has parents.  We used to assume that, but it's no longer
-		// true now that we have generators that can have parents and
-		// be update()d at the same time.
-//		parentCounts[node.id] = 0;
 		findNodesToUpdate(node);
 	});
 
@@ -980,18 +969,13 @@ function updateOrder(nodes) {
 
 	// if there are cycles, this one will never terminate
 	while (true) {
-		// remove a node with 0 parents from graph
-		// ideally take the one that should have come first in the
-		// natural ordering
-		// update children's parent counts
-		// push it into nodesToUpdate
 		var nodeKeys = Object.keys(parentCounts);
 		if (nodeKeys.length === 0) {
 			break;
 		}
 
 		var nodeKeyWithZeroParents = find(nodeKeys, function(nodeKey) {
-			// Assert parentCounts[nodeKey] >= 0
+			assert(parentCounts[nodeKey] >= 0);
 			return parentCounts[nodeKey] === 0;
 		});
 
