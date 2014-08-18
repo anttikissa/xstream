@@ -109,6 +109,47 @@ function mostRecentValue(s) {
 	return s.value;
 }
 
+// Find first element in array that satisfies test(element), or undefined
+function find(array, test) {
+	for (var i = 0, len = array.length; i < len; i++) {
+		var item = array[i];
+		if (test(item)) {
+			return item;
+		}
+	}
+}
+
+// Implementation of 'defer' using process.nextTick()
+function deferNextTick(f) {
+	var canceled = false;
+
+	function run() {
+		if (!canceled) {
+			f();
+		}
+	}
+
+	process.nextTick(run);
+
+	return function() {
+		canceled = true;
+	};
+}
+
+// Implementation of 'defer' using setTimeout()
+function deferTimeout(f) {
+	var timeout = setTimeout(f);
+	return function() {
+		clearTimeout(timeout);
+	};
+}
+
+// defer(Function f) -> Function
+// Call 'f' at a later time. Return a function that can be called to
+// cancel the the deferred call.
+var defer = typeof process !== 'undefined' && process.nextTick
+	? deferNextTick : deferTimeout;
+
 
 
 //
@@ -819,22 +860,220 @@ stream.onNextTick = function(action) {
 	if (!this.cancelDeferredTick) {
 		var that = this;
 		this.cancelDeferredTick = defer(function() {
-			that.commit();
+			that.tick();
 		});
 	}
 };
 
-// "Tick" by committing the current transaction.
-//
-// Optionally, specify a number of times to tick.
-stream.tick = function tick(times) {
-	times = times || 1;
-	while (times--) {
-		stream.commit();
-	}
-	return stream;
+
+function UpdateAction(stream, value) {
+	this.stream = stream;
+	this.value = value;
 }
 
+// Perform by convention returns true if this action resulted in a
+// direct update action (i.e. stream.newValue was set).
+UpdateAction.prototype.preUpdate = function preUpdate() {
+	if (this.stream.ended()) {
+		throw new Error('cannot update ended stream');
+	}
+	this.stream.newValue = this.value;
+	return true;
+};
+
+UpdateAction.prototype.postUpdate = nop;
+
+UpdateAction.prototype.toString = UpdateAction.prototype.inspect = function() {
+	return 'update(s' + this.stream.id + ', ' + this.value + ')';
+};
+
+function EndAction(stream) {
+	this.stream = stream;
+}
+
+EndAction.prototype.preUpdate = function preUpdate() {
+	var s = this.stream;
+	// This 'update()', unlike all others, will take effect
+	// during the same tick as this EndAction, and it will
+	// push a new action to the action queue.
+	s.ends().update(mostRecentValue(s));
+
+	// TODO dump parent-child relations, but only after
+	// dependencies have been sought out
+	// TODO dump listener relations but only after they have been called
+	// with possibly the new value
+	// TODO who dumps the listeners from .ends() streams? should they
+	// .end() as well
+};
+
+EndAction.prototype.postUpdate = function postUpdate() {
+	this.stream.unlink();
+	this.stream.listeners = [];
+};
+
+EndAction.prototype.toString = EndAction.prototype.inspect = function() {
+	return 'end(s' + this.stream.id + ')';
+};
+
+// Given an array of streams to update, create a graph of those streams
+// and their dependencies and return a topological ordering of that graph
+// where parents come before their children.
+//
+// nodes: array of Streams
+//
+// The algorithm assumes that 'nodes' only contains a single instance of
+// each stream.
+//
+// TODO clarify the order in which the updates happen.
+// Should we start updating from the nodes that come first?
+//
+function updateOrder(nodes) {
+	parentCounts = {};
+	allNodes = {};
+	nodesToUpdate = [];
+
+	// Find all nodes reachable from 'node'
+	// and record into 'parentCounts' the amount of incoming edges
+	// within this graph.
+	// TODO detect cyclical dependencies, eventually
+	function findNodesToUpdate(node) {
+		if (allNodes.hasOwnProperty(node.id)) {
+			// We have already calculated the parent counts descending
+			// from this node.
+			return;
+		}
+		allNodes[node.id] = node;
+		node.children.forEach(function(child) {
+			parentCounts[child.id] = (parentCounts[child.id] || 0) + 1;
+			findNodesToUpdate(child);
+		});
+	}
+
+	nodes.forEach(function(node) {
+		// This assumption is false if someone has update()d a node
+		// that has parents.  We used to assume that, but it's no longer
+		// true now that we have generators that can have parents and
+		// be update()d at the same time.
+//		parentCounts[node.id] = 0;
+		findNodesToUpdate(node);
+	});
+
+	// If we didn't find a parent count with findNodesToUpdate, it's zero
+	nodes.forEach(function(node) {
+		if (parentCounts[node.id] === undefined) {
+			parentCounts[node.id] = 0;
+		}
+	});
+
+	function removeNode(nodeKey) {
+		assert(nodeKey);
+		var node = allNodes[nodeKey];
+		node.children.forEach(function(child) {
+			parentCounts[child.id]--;
+		});
+		delete parentCounts[nodeKey];
+		delete allNodes[nodeKey];
+		nodesToUpdate.push(node);
+	}
+
+	// if there are cycles, this one will never terminate
+	while (true) {
+		// remove a node with 0 parents from graph
+		// ideally take the one that should have come first in the
+		// natural ordering
+		// update children's parent counts
+		// push it into nodesToUpdate
+		var nodeKeys = Object.keys(parentCounts);
+		if (nodeKeys.length === 0) {
+			break;
+		}
+
+		var nodeKeyWithZeroParents = find(nodeKeys, function(nodeKey) {
+			// Assert parentCounts[nodeKey] >= 0
+			return parentCounts[nodeKey] === 0;
+		});
+
+		removeNode(nodeKeyWithZeroParents);
+	}
+
+	return nodesToUpdate;
+}
+
+// tick(): Actual implementation of stream.tick().
+function tick() {
+	// Ensure that stream.ticks is always in the update queue.
+	// TODO maybe make this refresh
+	stream.ticks.update();
+
+	try {
+		if (stream.cancelDeferredTick) {
+			stream.cancelDeferredTick();
+			delete stream.cancelDeferredTick;
+		}
+
+		var updatedStreams = {};
+		var updatedStreamsOrdered = [];
+
+		var actionQueue = stream.actionQueue;
+
+		// We don't cache stream.actionQueue: .preUpdate() phase can schedule
+		// new actions, which causes stream.actionQueue to grow while we're
+		// iterating it.
+		for (var i = 0; i < actionQueue.length; i++) {
+			var action = actionQueue[i];
+
+			if (action.preUpdate()) {
+				var s = action.stream;
+				if (!updatedStreams[s.id]) {
+					updatedStreamsOrdered.push(s);
+					updatedStreams[s.id] = true;
+				}
+			}
+		}
+
+	} finally {
+		// Clear the actionQueue
+		stream.actionQueue = [];
+	}
+
+	var streamsToUpdate = updateOrder(updatedStreamsOrdered);
+
+	streamsToUpdate.forEach(function(s) {
+		// Only update if at least one of the parents were updated.
+		// OR if it's stream.ticks. Ugly special case?
+		if (s.parents.some(hasNewValue) || s === stream.ticks) {
+			s.updater.apply(s, s.parents);
+		}
+	});
+
+	streamsToUpdate.forEach(function(s) {
+		// Only broadcast the new value if this stream was updated,
+		// and delete s.newValue while we're at it; it's no longer
+		// needed.
+		if (hasNewValue(s)) {
+			s.value = s.newValue;
+			delete s.newValue;
+			s.broadcast();
+		}
+	});
+
+	for (var i = 0, len = actionQueue.length; i < len; i++) {
+		var action = actionQueue[i];
+		action.postUpdate();
+	}
+
+};
+
+// stream.tick(): Tick once.
+// stream.tick(Number n): Tick n times.
+stream.tick = function(times) {
+	if (times === undefined)
+		times = 1;
+
+	while (times--) {
+		tick();
+	}
+}
 
 
 //
@@ -1228,271 +1467,3 @@ stream.util.isEven = function isEven(a) { return !(a % 2); }
 //
 // stream.util.isOdd(Number) -> Boolean
 stream.util.isOdd = function isOdd(a) { return !!(a % 2); }
-
-//
-// Utilities used by Transaction
-//
-
-// TODO move somewhere...
-
-// Find first element in array that satisfies test(element), or undefined
-function find(array, test) {
-	for (var i = 0, len = array.length; i < len; i++) {
-		var item = array[i];
-		if (test(item)) {
-			return item;
-		}
-	}
-}
-
-// Implementation of 'defer' using process.nextTick()
-function deferNextTick(f) {
-	var canceled = false;
-
-	function run() {
-		if (!canceled) {
-			f();
-		}
-	}
-
-	process.nextTick(run);
-
-	return function() {
-		canceled = true;
-	};
-}
-
-// Implementation of 'defer' using setTimeout()
-function deferTimeout(f) {
-	var timeout = setTimeout(f);
-	return function() {
-		clearTimeout(timeout);
-	};
-}
-
-// defer(Function f) -> Function
-// Call 'f' at a later time. Return a function that can be called to
-// cancel the the deferred call.
-var defer = typeof process !== 'undefined' && process.nextTick
-	? deferNextTick : deferTimeout;
-
-//
-// Transaction
-//
-// TODO documentation
-//
-function Transaction() {
-	var that = this;
-	this.cancel = defer(function() {
-		that.commit();
-	});
-	this.actions = [];
-}
-
-function UpdateAction(stream, value) {
-	this.stream = stream;
-	this.value = value;
-}
-
-// Perform by convention returns true if this action resulted in a
-// direct update action (i.e. stream.newValue was set).
-UpdateAction.prototype.preUpdate = function preUpdate() {
-	if (this.stream.ended()) {
-		throw new Error('cannot update ended stream');
-	}
-	this.stream.newValue = this.value;
-	return true;
-};
-
-UpdateAction.prototype.postUpdate = nop;
-
-UpdateAction.prototype.toString = UpdateAction.prototype.inspect = function() {
-	return 'update(s' + this.stream.id + ', ' + this.value + ')';
-};
-
-function EndAction(stream) {
-	this.stream = stream;
-}
-
-EndAction.prototype.preUpdate = function preUpdate() {
-	var s = this.stream;
-	// This 'update()', unlike all others, will take effect
-	// during the same tick as this EndAction, and it will
-	// push a new action to the action queue.
-	s.ends().update(mostRecentValue(s));
-
-	// TODO dump parent-child relations, but only after
-	// dependencies have been sought out
-	// TODO dump listener relations but only after they have been called
-	// with possibly the new value 
-	// TODO who dumps the listeners from .ends() streams? should they
-	// .end() as well
-};
-
-EndAction.prototype.postUpdate = function postUpdate() {
-	this.stream.unlink();
-	this.stream.listeners = [];
-};
-
-EndAction.prototype.toString = EndAction.prototype.inspect = function() {
-	return 'end(s' + this.stream.id + ')';
-};
-
-// Given an array of streams to update, create a graph of those streams
-// and their dependencies and return a topological ordering of that graph 
-// where parents come before their children.
-//
-// nodes: array of Streams
-//
-// The algorithm assumes that 'nodes' only contains a single instance of
-// each stream.
-//
-// TODO clarify the order in which the updates happen.
-// Should we start updating from the nodes that come first?
-//
-function updateOrder(nodes) {
-	parentCounts = {};
-	allNodes = {};
-	nodesToUpdate = [];
-
-	// Find all nodes reachable from 'node'
-	// and record into 'parentCounts' the amount of incoming edges
-	// within this graph.
-	// TODO detect cyclical dependencies, eventually
-	function findNodesToUpdate(node) {
-		if (allNodes.hasOwnProperty(node.id)) {
-			// We have already calculated the parent counts descending
-			// from this node.
-			return;
-		}
-		allNodes[node.id] = node;
-		node.children.forEach(function(child) {
-			parentCounts[child.id] = (parentCounts[child.id] || 0) + 1;
-			findNodesToUpdate(child);
-		});
-	}
-
-	nodes.forEach(function(node) {
-		// This assumption is false if someone has update()d a node
-		// that has parents.  We used to assume that, but it's no longer
-		// true now that we have generators that can have parents and
-		// be update()d at the same time.
-//		parentCounts[node.id] = 0;
-		findNodesToUpdate(node);
-	});
-
-	// If we didn't find a parent count with findNodesToUpdate, it's zero
-	nodes.forEach(function(node) {
-		if (parentCounts[node.id] === undefined) {
-			parentCounts[node.id] = 0;
-		}
-	});
-
-	function removeNode(nodeKey) {
-		assert(nodeKey);
-		var node = allNodes[nodeKey];
-		node.children.forEach(function(child) {
-			parentCounts[child.id]--;
-		});
-		delete parentCounts[nodeKey];
-		delete allNodes[nodeKey];
-		nodesToUpdate.push(node);
-	}
-
-	// if there are cycles, this one will never terminate
-	while (true) {
-		// remove a node with 0 parents from graph
-		// ideally take the one that should have come first in the
-		// natural ordering
-		// update children's parent counts
-		// push it into nodesToUpdate
-		var nodeKeys = Object.keys(parentCounts);
-		if (nodeKeys.length === 0) {
-			break;
-		}
-
-		var nodeKeyWithZeroParents = find(nodeKeys, function(nodeKey) {
-			// Assert parentCounts[nodeKey] >= 0
-			return parentCounts[nodeKey] === 0;
-		});
-
-		removeNode(nodeKeyWithZeroParents);
-	}
-
-	return nodesToUpdate;
-}
-
-// Needs to treat EndActions specially.
-//
-// ..., update(s, x), end(s), ...  should result in 
-// ..., update(s, x), update(s.endStream, x), ...
-//
-// However
-//
-// ..., end(s), update(s, x), ... should be error
-//
-stream.commit = function() {
-	// Ensure that stream.ticks is always in the update queue.
-	// TODO maybe make this refresh
-	stream.ticks.update();
-
-	try {
-		// TODO make this cancel the deferred tick
-		if (this.cancelDeferredTick) {
-			this.cancelDeferredTick();
-			delete this.cancelDeferredTick;
-		}
-
-		var updatedStreams = {};
-		var updatedStreamsOrdered = [];
-
-		var actionQueue = stream.actionQueue;
-
-		// We don't cache stream.actionQueue: .preUpdate() phase can schedule
-		// new actions, which causes stream.actionQueue to grow while we're
-		// iterating it.
-		for (var i = 0; i < actionQueue.length; i++) {
-			var action = actionQueue[i];
-
-			if (action.preUpdate()) {
-				var s = action.stream;
-				if (!updatedStreams[s.id]) {
-					updatedStreamsOrdered.push(s);
-					updatedStreams[s.id] = true;
-				}
-			}
-		}
-
-	} finally {
-		// Clear the actionQueue
-		stream.actionQueue = [];
-	}
-
-	var streamsToUpdate = updateOrder(updatedStreamsOrdered);
-
-	streamsToUpdate.forEach(function(s) {
-		// Only update if at least one of the parents were updated.
-		// OR if it's stream.ticks. Ugly special case?
-		if (s.parents.some(hasNewValue) || s === stream.ticks) {
-			s.updater.apply(s, s.parents);
-		}
-	});
-
-	streamsToUpdate.forEach(function(s) {
-		// Only broadcast the new value if this stream was updated,
-		// and delete s.newValue while we're at it; it's no longer
-		// needed.
-		if (hasNewValue(s)) {
-			s.value = s.newValue;
-			delete s.newValue;
-			s.broadcast();
-		}
-	});
-
-	for (var i = 0, len = actionQueue.length; i < len; i++) {
-		var action = actionQueue[i];
-		action.postUpdate();
-	}
-
-};
-
