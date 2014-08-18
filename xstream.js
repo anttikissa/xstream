@@ -1316,6 +1316,7 @@ EndAction.prototype.preUpdate = function preUpdate() {
 
 EndAction.prototype.postUpdate = function postUpdate() {
 	this.stream.unlink();
+	this.stream.listeners = [];
 };
 
 EndAction.prototype.toString = EndAction.prototype.inspect = function() {
