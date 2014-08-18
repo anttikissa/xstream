@@ -41,11 +41,11 @@ prematurely:
 	s.leave(5).forEach(log);
 	// no effect
 
-`leave(n)` is `n` (+ X -- find out why!) ticks behind its parent stream.
+`leave(n)` is `n` + 1 ticks behind its parent stream.
 
 	var timer = stream.fromRange(0, 5);
 	var parent = stream.fromRange(0, 2);
-	var leftovers = parent.leave(1);
+	var leftovers = parent.leave(2);
 	parent.onEnd(function() {
 		console.log('[' + timer.value + ': parent end]')
 	});
@@ -59,8 +59,8 @@ prematurely:
 		console.log('[' + time + ': ' + p + ' ' + l + ']');
 	});
 	stream.tick(10);
-	// TODO figure out what's wrong with this!
-	// x-> [0: 0 ?]; [1: 1 ?]; [2: 2 ?]; [3: 3 ?]; [4: 3 ?]; [5: 3 ?]; [5: parent end]; [6: 3 2]; [6: 3 3]; [6: leftovers end]
+	// -> [0: 0 ?]; [1: 1 ?]; [2: 2 ?]; [3: 2 ?]
+	// -> [3: parent end]; [4: 2 1]; [5: 2 2]; [5: leftovers end]
 
 Streams' `update()` should not be called if none of their parents were updated:
 
