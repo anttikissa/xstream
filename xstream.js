@@ -1332,8 +1332,7 @@ stream.fromRange = function fromRange(start, end, step) {
 			var current = this.state.current;
 			this.state.current += this.state.step;
 			return current;
-		}
-		);
+		});
 }
 
 // Make a stream from a list of values.
@@ -1342,8 +1341,7 @@ stream.fromRange = function fromRange(start, end, step) {
 //
 // stream.fromValues(1,2,3) is equal to stream.fromArray([1,2,3]).
 stream.fromValues = function fromValues() {
-	var args = Array.prototype.slice.call(arguments);
-	return stream.fromArray.call(stream, args);
+	return stream.fromArray.call(stream, arguments);
 };
 
 // stream.fromString(String string) -> Stream
