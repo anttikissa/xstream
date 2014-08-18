@@ -6,6 +6,7 @@ SOURCES="xstream.js"
 while true
 do
 	$WF $SOURCES
+	./test
 	./mk
 done
 
