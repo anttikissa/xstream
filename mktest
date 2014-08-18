@@ -21,12 +21,15 @@ function push(line) {
 	testLines.push(actual);
 }
 
-args.forEach(function(filename) {
-	var testIdx = 0;
+var testIdx = 0;
 
-	testLines.push('// Tests from ' + filename + ':');
-	testLines.push('global.console.log("==\\n== TESTS FROM ' + filename + 
-		'\\n==");');
+args.forEach(function(filename) {
+	push('tests = [];');
+	push('tests.name = "' + filename + '";');
+
+//	push('// Tests from ' + filename + ':');
+//	push('global.console.log("==\\n== TESTS FROM ' + filename + 
+//		'\\n==");');
 
 	var lines = fs.readFileSync(filename, 'utf8').split('\n');
 	lines.pop();
@@ -54,13 +57,10 @@ args.forEach(function(filename) {
 					trim().replace(/:$/, '');
 				push();
 				push('// test ' + testIdx + ', line ' + idx);
-				testLines.push('//');
+				push('//');
 				prevComment.map(prepend('// ')).forEach(push);
 				prevComment = [];
 				push('tests.push(function() {');
-//				push('\tconsole.realLog = console.log;');
-//				push('\tvar recordingLog = makeConsole();');
-//				push('\tconsole.log = recordingLog; try {');
 				afterFunction = '\tstream.tick();\n' + 
 					'\t\n' +
 					'});';
@@ -118,6 +118,7 @@ args.forEach(function(filename) {
 	if (prevLineType === 'code') {
 		push(afterFunction);
 	}
+	push('suites.push(tests);');
 });
 
 var before = fs.readFileSync('misc/test-before.js', 'utf8');

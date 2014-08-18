@@ -3,6 +3,8 @@ var stream = require('../xstream');
 
 var consoleId = 1;
 
+var realLog = console.log.bind(console);
+
 (function() {
 var makeConsole = function() {
 	return (function() {
@@ -20,12 +22,14 @@ var makeConsole = function() {
 				return util.format(arg);
 			}).join(' ');
 			recordingLog.lines.push(line);
-			console.realLog.call(console, '[console ' + id + ']', line);
+//			console.realLog.call(console, '[console ' + id + ']', line);
 		};
 
 		recordingLog.lines = [];
-		return recordingLog
-
+		// For replaying the log later, if something breaks
+		recordingLog.collectedLines = [];
+		recordingLog.id = id;
+		return recordingLog;
 	})();
 }
 
@@ -33,12 +37,24 @@ function log(console) {
 	return console.log.bind(console);
 }
 
-function fail(message, stack, console) {
-	global.console.log(message);
-	if (console.test) {
-		global.console.log("Failing test:", console.test);
-	}
-	global.console.log("Original stacktrace: " + stack);
+// extract the essential information out of the stacktrace
+function tidyUp(stacktrace) {
+	var lines = stacktrace.split('\n')
+	return lines.slice(2).join('\n');
+}
+
+function fail(message, stack, log) {
+	log.collectedLines.forEach(function(line) {
+		realLog('[console ' + log.id + ']', line);
+	});
+
+	realLog(message);
+	realLog(tidyUp(stack));
+
+	log.lines.forEach(function(line) {
+		realLog('[console ' + log.id + ']', line);
+	});
+
 	process.exit(1);
 }
 
@@ -50,16 +66,17 @@ function assertPrinted(log, str) {
 	var stack = new Error().stack;
 	if (str !== null) {
 		var actual = log.lines.shift();
+		log.collectedLines.push(actual);
 		if (actual !== str) {
-			fail("Expected '" + str + "', got '" + actual + "'", stack, console);
+			fail("Expected '" + str + "', got '" + actual + "'", stack, log);
 		}
 	} else {
 		if (log.lines.length) {
 			fail("Expected nothing, console output was " +
-				JSON.stringify(log.lines), stack, console);
+				JSON.stringify(log.lines), stack, log);
 		}
 	}
 }
 
-var tests = [];
-
+var suites = [];
+var tests;
