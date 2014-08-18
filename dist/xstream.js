@@ -39,24 +39,25 @@ var module = {};
 //
 // This file is divided into chapters:
 //
-// Chapter 1 - General utility functions
-// Chapter 2 - Stream() constructor
+// Chapter 1 - Internal utilities
+// Chapter 2 - Stream() and stream()
 // Chapter 3 - Stream general methods
-// Chapter # - Stream combinators
-// Chapter # - stream general functions (are there any)
-// Chapter # - stream combinators
-// Chapter # - transactions
-// Chapter # - Generators .fromArray() etc.
-// Chapter # - utils
-// Chapter # - misc development/debug stuff (speedTest?)
+// Chapter 4 - Stream operators
+// Chapter 5 - stream general functions
+// Chapter 6 - stream combinators
+// Chapter 7 - Metastream operators
+// Chapter 8 - Generators
+// Chapter 9 - Utilities (stream.util)
+// Chapter 10 - Misc development/debug stuff (speedTest?)
 //
 // Enjoy!
 //
 
 //
-// Chapter 1 - Utilities
+// Chapter 1 - Internal utilities
 //
 // General utility functions, used internally for miscellaneous purposes.
+// Feel free to skip to the next chapter.
 //
 
 // Like console.log but shorter to write and can be passed around as a function.
@@ -424,14 +425,11 @@ Stream.prototype.link = function(parents, updater, f) {
 //
 // Return this.
 Stream.prototype.update = function(value) {
-	stream.transaction().update(this, value);
+	stream.onNextTick(new UpdateAction(this, value));
 	return this;
 };
 
 // Stream.end() -> Stream: End this stream.
-//
-// TODO TODO TODO rethink and rewrite
-// There's probably a cleaner way to do it
 //
 // End this stream, causing this.ends() to update with the most recent
 // value of this stream.
@@ -446,7 +444,7 @@ Stream.prototype.update = function(value) {
 // can use .forEach() to schedule the next update, and we can use .end() within
 // a .forEach handler to end them with the current value.
 Stream.prototype.end = function() {
-	stream.transaction().end(this);
+	stream.onNextTick(new EndAction(this));
 	return this;
 };
 
@@ -577,7 +575,7 @@ Stream.prototype.endWhen = function(value) {
 
 
 //
-// Chapter 4 - Stream operator methods
+// Chapter 4 - Stream operators
 //
 // This chapter introduces operators that create a Stream out of another
 // Stream.  They are installed as Stream's methods for chaining convenience:
@@ -781,15 +779,14 @@ Stream.prototype.collect = function() {
 
 
 //
-// Chapter # - stream general methods
+// Chapter 5 - stream general functions
 //
 // Methods and variables installed directly to 'stream'.
 //
 // Mostly for internal use.
 //
-
-// Will updates automatically schedule a commit?
-stream.autoCommit = true;
+// Plus 'tick()'.
+//
 
 // stream.ticks is a special stream that is updated automatically on every
 // tick.
@@ -807,8 +804,26 @@ stream.ticks.updater = function() {
 };
 
 // Get the current transaction or create one.
-stream.transaction = function transaction() {
+stream.x = function() {
 	return stream.tx || (stream.tx = new Transaction());
+};
+
+// Update and end actions are collected into stream.actionQueue, which
+// is then handled by stream.tick().
+stream.actionQueue = [];
+
+// Schedule 'action' to be performed on the next tick, and ensure that
+// the next tick happens.
+stream.onNextTick = function(action) {
+	stream.actionQueue.push(action);
+
+	// Schedule a tick, if one is not already scheduled.
+	if (!this.cancelDeferredTick) {
+		var that = this;
+		this.cancelDeferredTick = defer(function() {
+			that.commit();
+		});
+	}
 };
 
 // "Tick" by committing the current transaction.
@@ -817,7 +832,7 @@ stream.transaction = function transaction() {
 stream.tick = function tick(times) {
 	times = times || 1;
 	while (times--) {
-		stream.transaction().commit();
+		stream.commit();
 	}
 	return stream;
 }
@@ -825,10 +840,10 @@ stream.tick = function tick(times) {
 
 
 //
-// Chapter # - stream combinators
+// Chapter 6 - stream combinators
 //
-// Operators that combine multiple streams are live in the 'stream'
-// namespace.  They include:
+// Operators that combine multiple streams live in the 'stream'
+// namespace and are called combinators.  They include:
 //
 // merge, combine,
 //
@@ -963,7 +978,19 @@ stream.zip = function() {
 };
 
 //
-// Chapter # - Generator streams
+// Chapter 7 - Metastream operators
+//
+// Metastreams are streams whose values are streams.
+//
+// Sounds more complex than it is. Example:
+//
+// TODO
+//
+// Then explain the whole duality. parallel/series
+//
+
+//
+// Chapter 8 - Generators
 //
 // Generators are streams that produce values until they end.  After yielding
 // a value, a generator automatically schedules the next tick (unless it has
@@ -1167,6 +1194,8 @@ stream.speedtest = function speedtest() {
 
 
 //
+// Chapter 9 - Utilities (stream.util)
+//
 // A collection of useful functions.
 //
 
@@ -1206,6 +1235,8 @@ stream.util.isOdd = function isOdd(a) { return !!(a % 2); }
 // Utilities used by Transaction
 //
 
+// TODO move somewhere...
+
 // Find first element in array that satisfies test(element), or undefined
 function find(array, test) {
 	for (var i = 0, len = array.length; i < len; i++) {
@@ -1216,6 +1247,7 @@ function find(array, test) {
 	}
 }
 
+// Implementation of 'defer' using process.nextTick()
 function deferNextTick(f) {
 	var canceled = false;
 
@@ -1232,6 +1264,7 @@ function deferNextTick(f) {
 	};
 }
 
+// Implementation of 'defer' using setTimeout()
 function deferTimeout(f) {
 	var timeout = setTimeout(f);
 	return function() {
@@ -1239,9 +1272,11 @@ function deferTimeout(f) {
 	};
 }
 
-// Do 'f' at a later time. Return a function that can be called to
+// defer(Function f) -> Function
+// Call 'f' at a later time. Return a function that can be called to
 // cancel the the deferred call.
-var defer = typeof process !== 'undefined' && process.nextTick ? deferNextTick : deferTimeout;
+var defer = typeof process !== 'undefined' && process.nextTick
+	? deferNextTick : deferTimeout;
 
 //
 // Transaction
@@ -1250,11 +1285,9 @@ var defer = typeof process !== 'undefined' && process.nextTick ? deferNextTick :
 //
 function Transaction() {
 	var that = this;
-	if (stream.autoCommit) {
-		this.cancel = defer(function() {
-			that.commit();
-		});
-	}
+	this.cancel = defer(function() {
+		that.commit();
+	});
 	this.actions = [];
 }
 
@@ -1300,18 +1333,11 @@ EndAction.prototype.preUpdate = function preUpdate() {
 
 EndAction.prototype.postUpdate = function postUpdate() {
 	this.stream.unlink();
+	this.stream.listeners = [];
 };
 
 EndAction.prototype.toString = EndAction.prototype.inspect = function() {
 	return 'end(s' + this.stream.id + ')';
-};
-
-Transaction.prototype.update = function(stream, value) {
-	this.actions.push(new UpdateAction(stream, value));
-};
-
-Transaction.prototype.end = function(stream) {
-	this.actions.push(new EndAction(stream));
 };
 
 // Given an array of streams to update, create a graph of those streams
@@ -1407,20 +1433,28 @@ function updateOrder(nodes) {
 //
 // ..., end(s), update(s, x), ... should be error
 //
-Transaction.prototype.commit = function() {
+stream.commit = function() {
 	// Ensure that stream.ticks is always in the update queue.
+	// TODO maybe make this refresh
 	stream.ticks.update();
 
 	try {
-		if (this.cancel) {
-			this.cancel();
+		// TODO make this cancel the deferred tick
+		if (this.cancelDeferredTick) {
+			this.cancelDeferredTick();
+			delete this.cancelDeferredTick;
 		}
 
 		var updatedStreams = {};
 		var updatedStreamsOrdered = [];
 
-		for (var i = 0; i < this.actions.length; i++) {
-			var action = this.actions[i];
+		var actionQueue = stream.actionQueue;
+
+		// We don't cache stream.actionQueue: .preUpdate() phase can schedule
+		// new actions, which causes stream.actionQueue to grow while we're
+		// iterating it.
+		for (var i = 0; i < actionQueue.length; i++) {
+			var action = actionQueue[i];
 
 			if (action.preUpdate()) {
 				var s = action.stream;
@@ -1431,45 +1465,37 @@ Transaction.prototype.commit = function() {
 			}
 		}
 
-		// This clears the transaction queue.
-		// In practice, this means that actions resulting from updaters or
-		// listeners will be scheduled to the next transaction.
-		if (stream.tx === this) {
-			delete stream.tx;
-		}
-
-		var streamsToUpdate = updateOrder(updatedStreamsOrdered);
-
-		streamsToUpdate.forEach(function(s) {
-			// Only update if at least one of the parents were updated.
-			// OR if it's stream.ticks. Ugly special case?
-			if (s.parents.some(hasNewValue) || s === stream.ticks) {
-				s.updater.apply(s, s.parents);
-			}
-		});
-
-		streamsToUpdate.forEach(function(s) {
-			// Only broadcast the new value if this stream was updated,
-			// and delete s.newValue while we're at it; it's no longer
-			// needed.
-			if (hasNewValue(s)) {
-				s.value = s.newValue;
-				delete s.newValue;
-				s.broadcast();
-			}
-		});
-
-		for (var i = 0; i < this.actions.length; i++) {
-			var action = this.actions[i];
-			action.postUpdate();
-		}
-
 	} finally {
-		// In case of emergency, dump the whole transaction queue
-		if (stream.tx === this) {
-			delete stream.tx;
-		}
+		// Clear the actionQueue
+		stream.actionQueue = [];
 	}
+
+	var streamsToUpdate = updateOrder(updatedStreamsOrdered);
+
+	streamsToUpdate.forEach(function(s) {
+		// Only update if at least one of the parents were updated.
+		// OR if it's stream.ticks. Ugly special case?
+		if (s.parents.some(hasNewValue) || s === stream.ticks) {
+			s.updater.apply(s, s.parents);
+		}
+	});
+
+	streamsToUpdate.forEach(function(s) {
+		// Only broadcast the new value if this stream was updated,
+		// and delete s.newValue while we're at it; it's no longer
+		// needed.
+		if (hasNewValue(s)) {
+			s.value = s.newValue;
+			delete s.newValue;
+			s.broadcast();
+		}
+	});
+
+	for (var i = 0, len = actionQueue.length; i < len; i++) {
+		var action = actionQueue[i];
+		action.postUpdate();
+	}
+
 };
 
 })(module); var stream = module.exports;

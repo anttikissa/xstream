@@ -423,14 +423,11 @@ Stream.prototype.link = function(parents, updater, f) {
 //
 // Return this.
 Stream.prototype.update = function(value) {
-	stream.transaction().update(this, value);
+	stream.onNextTick(new UpdateAction(this, value));
 	return this;
 };
 
 // Stream.end() -> Stream: End this stream.
-//
-// TODO TODO TODO rethink and rewrite
-// There's probably a cleaner way to do it
 //
 // End this stream, causing this.ends() to update with the most recent
 // value of this stream.
@@ -445,7 +442,7 @@ Stream.prototype.update = function(value) {
 // can use .forEach() to schedule the next update, and we can use .end() within
 // a .forEach handler to end them with the current value.
 Stream.prototype.end = function() {
-	stream.transaction().end(this);
+	stream.onNextTick(new EndAction(this));
 	return this;
 };
 
@@ -805,8 +802,26 @@ stream.ticks.updater = function() {
 };
 
 // Get the current transaction or create one.
-stream.transaction = function transaction() {
+stream.x = function() {
 	return stream.tx || (stream.tx = new Transaction());
+};
+
+// Update and end actions are collected into stream.actionQueue, which
+// is then handled by stream.tick().
+stream.actionQueue = [];
+
+// Schedule 'action' to be performed on the next tick, and ensure that
+// the next tick happens.
+stream.onNextTick = function(action) {
+	stream.actionQueue.push(action);
+
+	// Schedule a tick, if one is not already scheduled.
+	if (!this.cancelDeferredTick) {
+		var that = this;
+		this.cancelDeferredTick = defer(function() {
+			that.commit();
+		});
+	}
 };
 
 // "Tick" by committing the current transaction.
@@ -815,7 +830,7 @@ stream.transaction = function transaction() {
 stream.tick = function tick(times) {
 	times = times || 1;
 	while (times--) {
-		stream.transaction().commit();
+		stream.commit();
 	}
 	return stream;
 }
@@ -1323,14 +1338,6 @@ EndAction.prototype.toString = EndAction.prototype.inspect = function() {
 	return 'end(s' + this.stream.id + ')';
 };
 
-Transaction.prototype.update = function(stream, value) {
-	this.actions.push(new UpdateAction(stream, value));
-};
-
-Transaction.prototype.end = function(stream) {
-	this.actions.push(new EndAction(stream));
-};
-
 // Given an array of streams to update, create a graph of those streams
 // and their dependencies and return a topological ordering of that graph 
 // where parents come before their children.
@@ -1424,20 +1431,28 @@ function updateOrder(nodes) {
 //
 // ..., end(s), update(s, x), ... should be error
 //
-Transaction.prototype.commit = function() {
+stream.commit = function() {
 	// Ensure that stream.ticks is always in the update queue.
+	// TODO maybe make this refresh
 	stream.ticks.update();
 
 	try {
-		if (this.cancel) {
-			this.cancel();
+		// TODO make this cancel the deferred tick
+		if (this.cancelDeferredTick) {
+			this.cancelDeferredTick();
+			delete this.cancelDeferredTick;
 		}
 
 		var updatedStreams = {};
 		var updatedStreamsOrdered = [];
 
-		for (var i = 0; i < this.actions.length; i++) {
-			var action = this.actions[i];
+		var actionQueue = stream.actionQueue;
+
+		// We don't cache stream.actionQueue: .preUpdate() phase can schedule
+		// new actions, which causes stream.actionQueue to grow while we're
+		// iterating it.
+		for (var i = 0; i < actionQueue.length; i++) {
+			var action = actionQueue[i];
 
 			if (action.preUpdate()) {
 				var s = action.stream;
@@ -1448,44 +1463,36 @@ Transaction.prototype.commit = function() {
 			}
 		}
 
-		// This clears the transaction queue.
-		// In practice, this means that actions resulting from updaters or
-		// listeners will be scheduled to the next transaction.
-		if (stream.tx === this) {
-			delete stream.tx;
-		}
-
-		var streamsToUpdate = updateOrder(updatedStreamsOrdered);
-
-		streamsToUpdate.forEach(function(s) {
-			// Only update if at least one of the parents were updated.
-			// OR if it's stream.ticks. Ugly special case?
-			if (s.parents.some(hasNewValue) || s === stream.ticks) {
-				s.updater.apply(s, s.parents);
-			}
-		});
-
-		streamsToUpdate.forEach(function(s) {
-			// Only broadcast the new value if this stream was updated,
-			// and delete s.newValue while we're at it; it's no longer
-			// needed.
-			if (hasNewValue(s)) {
-				s.value = s.newValue;
-				delete s.newValue;
-				s.broadcast();
-			}
-		});
-
-		for (var i = 0; i < this.actions.length; i++) {
-			var action = this.actions[i];
-			action.postUpdate();
-		}
-
 	} finally {
-		// In case of emergency, dump the whole transaction queue
-		if (stream.tx === this) {
-			delete stream.tx;
-		}
+		// Clear the actionQueue
+		stream.actionQueue = [];
 	}
+
+	var streamsToUpdate = updateOrder(updatedStreamsOrdered);
+
+	streamsToUpdate.forEach(function(s) {
+		// Only update if at least one of the parents were updated.
+		// OR if it's stream.ticks. Ugly special case?
+		if (s.parents.some(hasNewValue) || s === stream.ticks) {
+			s.updater.apply(s, s.parents);
+		}
+	});
+
+	streamsToUpdate.forEach(function(s) {
+		// Only broadcast the new value if this stream was updated,
+		// and delete s.newValue while we're at it; it's no longer
+		// needed.
+		if (hasNewValue(s)) {
+			s.value = s.newValue;
+			delete s.newValue;
+			s.broadcast();
+		}
+	});
+
+	for (var i = 0, len = actionQueue.length; i < len; i++) {
+		var action = actionQueue[i];
+		action.postUpdate();
+	}
+
 };
 
