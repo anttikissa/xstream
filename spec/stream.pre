@@ -62,7 +62,7 @@ prematurely:
 	// -> [0: 0 ?]; [1: 1 ?]; [2: 2 ?]; [3: 2 ?]
 	// -> [3: parent end]; [4: 2 1]; [5: 2 2]; [5: leftovers end]
 
-Streams' `update()` should not be called if none of their parents were updated:
+Streams' `set()` should not be called if none of their parents were updated:
 
 	var s1 = stream();
 	var s2 = stream();
@@ -74,11 +74,11 @@ Streams' `update()` should not be called if none of their parents were updated:
 	});
 
 	// initial values to 'ones' and 'twos'
-	s1.update(1);
-	s2.update(2);
+	s1.set(1);
+	s2.set(2);
 	stream.tick();
 	// -> combine 1 and 2
-	s1.update(100); // this will be filtered out
+	s1.set(100); // this will be filtered out
 	stream.tick();
 	// no effect
 
@@ -171,14 +171,14 @@ Calling `end` within a .forEach handler:
 	var s2 = stream();
 	var s3 = stream.merge(s1, s2).forEach(log);
 
-	s1.update(1).tick(); // -> 1
-	s2.update('a').tick(); // -> a
-	s1.update(2);
-	s2.update('b');
+	s1.set(1).tick(); // -> 1
+	s2.set('a').tick(); // -> a
+	s1.set(2);
+	s2.set('b');
 	stream.tick();
 	// -> b
-	s2.update('c');
-	s1.update(3);
+	s2.set('c');
+	s1.set(3);
 	stream.tick();
 	// -> c
 

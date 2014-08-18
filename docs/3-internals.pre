@@ -28,10 +28,10 @@ Here's a the blueprint of a function that creates an iterator stream:
 			}
 
 			var newValue = "iterate one step, change .state accordingly";
-			this.update(newValue);
+			this.set(newValue);
 		};
 
-		result.next(); // OR result.update(initialValue);
+		result.next(); // OR result.set(initialValue);
 		return result.forEach(result.next);
 	}
 
@@ -63,7 +63,7 @@ For instance, to create a stream that factorizes a number:
 
 			var factor = lowestFactor(this.state);
 			this.state = this.state / factor;
-			this.update(factor);
+			this.set(factor);
 		};
 
 		result.next();

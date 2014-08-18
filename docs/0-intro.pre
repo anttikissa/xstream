@@ -12,8 +12,8 @@ An example of using streams:
 	var s1 = stream();
 	var s2 = stream();
 	var s3 = stream.combine(s1, s2, function(a, b) { return a + b });
-	s1.update(1);
-	s2.update(2);
+	s1.set(1);
+	s2.set(2);
 	s3.forEach(function(value) {
 		console.log(value);
 	});

@@ -8,7 +8,7 @@
 - rename (mostly) internal methods like ensureNoCyclicalDependencies
   to start with underscore
 - think about end()
-- update() logic is documented in multiple places, which is the
+- set() logic is documented in multiple places, which is the
   best one?
 - reenable test "`leave(n)` is `n` (+ X -- find out why!) ticks behind
   its parent stream." and figure out how many ticks it SHOULD be behind.
@@ -56,8 +56,8 @@
   update at all?"
   (nobody listening === this.children.length == 0 and this.listeners
   only contains my own listener)
-- test stuff like s.update(x); s.end(); within the same tick
-- AND s.update(x); s.end(); s.update(y); within the same tick
+- test stuff like s.set(x); s.end(); within the same tick
+- AND s.set(x); s.end(); s.update(y); within the same tick
 - nightly implementation idea: s.end() should change .updater to function() {
     throw new Error('stream ended');
   }
@@ -78,7 +78,7 @@
   instead of 'dependencies' (maybe?), talk about linking and unlinking
   instead of depends()/rewire (maybe? rewire could do just unlink from
   current parents + link to new ones)
-- should prevent .update() from being called when the stream has parents
+- should prevent .set() from being called when the stream has parents
   (this messes with the topological sort, sets parensCount[id] to -1,
   should've seen that coming)
 - mergeStream(stream), mergeStreamLatest(stream)
@@ -204,11 +204,11 @@ A stream's value is 'undefined' by default.
 	var s = stream();
 	console.log(s.value); // -> undefined
 
-You can change the value using `.update()`, but it won't be set immediately.
+You can change the value using `.set()`, but it won't be set immediately.
 TODO talk about ticks instead
 
 	var s = stream();
-	s.update(1);
+	s.set(1);
 	console.log(s.value);
 	// -> undefined
 
@@ -236,8 +236,8 @@ immediately. A .tick() will update all streams that have an `update` pending:
 	var s = stream();
 	var s2 = stream();
 
-	s.update(123);
-	s2.update(234);
+	s.set(123);
+	s2.set(234);
 	s.tick();
 	console.log(s.value); // -> 123
 	// tick() also commits changes to other streams
@@ -258,17 +258,17 @@ Back to `update`. Like many other methods of `stream`, it returns the
 stream itself:
 
 	var s = stream();
-	console.log(s.update(123) === s);
+	console.log(s.set(123) === s);
 	// -> true
 	
 So you can write:
 
-	var s = stream().update(123).tick();
+	var s = stream().set(123).tick();
 	console.log(s.value);
 	// -> 123
 
 Or simply use the constructor `stream(value)`, which triggers
-`update(value)` (if `value` is defined):
+`set(value)` (if `value` is defined):
 
 	var s = stream(123).tick();
 	console.log(s.value);
@@ -281,24 +281,24 @@ You can listen for changes in a stream's value:
 		console.log(value);
 	});
 
-	s.update(1);
+	s.set(1);
 	// later:
 	// -> 1
 	console.log(s.value); // -> 1
 
-Like `.update()`, `.forEach()` returns the set itself, so you can use them in the
+Like `.set()`, `.forEach()` returns the set itself, so you can use them in the
 same expression:
 
 	var s = stream().forEach(function(value) {
 		console.log('s', value); 
-	}).update(1);
+	}).set(1);
 	// later:
 	// -> s 1
 
-The order of `.update()` and `.forEach()` doesn't matter, because the
+The order of `.set()` and `.forEach()` doesn't matter, because the
 transaction only happens later:
 
-	var s = stream().update(2).forEach(function(value) {
+	var s = stream().set(2).forEach(function(value) {
 		console.log('s', value); 
 	});
 	// later:
@@ -312,7 +312,7 @@ Alternatively, you can call stream.transaction() to get the current
 transaction, or start a new one if there isn't one already.
 
 	//console.log(stream.tx); // x-> []
-	//var s = stream().update(1);
+	//var s = stream().set(1);
 	//console.log(stream.tx); // x-> [[xxx, 1]]
 
 For demonstration purposes, we'll be using a function that just logs its
@@ -327,10 +327,10 @@ it's the same as the old value:
 
 	var s = stream();
 	s.forEach(log);
-	s.update(1);
+	s.set(1);
 	s.tick();
 	// -> 1
-	s.update(1);
+	s.set(1);
 	s.tick();
 	// -> 1
 
@@ -339,10 +339,10 @@ changes with `stream.uniq()` (similar to Unix tool `uniq(1)`)
 
 	var s = stream();
 	s.uniq().forEach(log);
-	s.update(1);
+	s.set(1);
 	s.tick();
 	// -> 1
-	s.update(1);
+	s.set(1);
 	s.tick();
 	// no effect
 
@@ -355,11 +355,11 @@ You can map streams into other streams.
 		console.log('s2 is', value);
 	});
 
-	s.update(5);
+	s.set(5);
 	// later:
 	// -> 5; s2 is 10
 
-	s.update(10);
+	s.set(10);
 	// later:
 	// -> 10; s2 is 20
 
@@ -370,7 +370,7 @@ Transitive dependencies work:
 	var s3 = s2.map(function(x) { return x * 2; });
 
 	s3.forEach(log);
-	s.update(1);
+	s.set(1);
 	// later:
 	// -> 4
 
@@ -478,15 +478,15 @@ You can `end()` an array stream, too:
 // or something
 
 You should be able to set how long a delay `fromArray()` (or an
-`update()`) is.
+`set()`) is.
 
 //	stream.fromValues(1,2,3).delay(100);
 	// wait 100 ms, then give 1, 2, 3 in a burst
 
 //	stream.fromValues(1).delay(100);
 	// should be equivalent to
-//	stream().update(1).delay(100);
-	// but .update() already committed a transaction!
+//	stream().set(1).delay(100);
+	// but .set() already committed a transaction!
 	// this means that we should have means to remove a stream from
 	// the transaction queue. transaction().remove(stream) ->
 	// would return an array of operations.
@@ -513,10 +513,10 @@ streams is updated, the resulting stream is updated as well.
 		return value1 * value2;
 	});
 	s3.forEach(log);
-	s1.update(2);
+	s1.set(2);
 	// later:
 	// -> 2
-	s2.update(3);
+	s2.set(3);
 	// later:
 	// -> 6
 
@@ -561,13 +561,13 @@ You can merge two streams:
 	var s2 = stream();
 	var both = stream.merge(s, s2).forEach(log);
 
-	s.update(1).tick();
+	s.set(1).tick();
 	// -> 1
-	s2.update(2).tick();
+	s2.set(2).tick();
 	// -> 2
 
-	s.update(3);
-	s2.update(4);
+	s.set(3);
+	s2.set(4);
 	stream.tick();
 	// Note that if both streams are updated within the same
 	// transaction, only the later value will be taken into
@@ -657,7 +657,7 @@ dependencies from the given stream:
 	s.rewire(newSource);
 	stream.tick();
 	// -> 2
-	oldSource.update(5).tick();
+	oldSource.set(5).tick();
 	stream.tick();
 	// no effect
 
@@ -668,7 +668,7 @@ dependencies from the given stream:
 	s1.onEnd(function(value) { console.log('end 1:', value); });
 	s2.onEnd(function(value) { console.log('end 2:', value); });
 	s2.rewire(s1.map(stream.util.inc));
-	s1.update(123);
+	s1.set(123);
 	s1.end();
 	stream.tick();
 	// -> end 1: 123; end 2: 124
@@ -690,7 +690,7 @@ end value will be same as the value set during the transaction:
 
 	var s = stream();
 	s.ends().forEach(log);
-	s.update(1); // the order doesn't matter; or should it?
+	s.set(1); // the order doesn't matter; or should it?
 	s.end();
 	s.tick();
 	// -> 1
@@ -699,11 +699,11 @@ How about:
 
 	var s = stream();
 	s.ends().forEach(log);
-	s.update(1);
+	s.set(1);
 	s.end();
-	s.update(2);
+	s.set(2);
 	s.tick();
-	// should probably get something like 'cannot .update() and ended
+	// should probably get something like 'cannot .set() and ended
 	// stream'
 
 Mapped streams end when the parent stream ends:
@@ -712,7 +712,7 @@ Mapped streams end when the parent stream ends:
 	var s2 = s.map(function(x) { return x * 2; });
 	s.onEnd(function(value) { console.log('s ended with', value); });
 	s2.onEnd(function(value) { console.log('s2 ended with', value); });
-	s.update(123);
+	s.set(123);
 	s.end();
 	// later:
 	// -> s ended with 123; s2 ended with 246
@@ -811,19 +811,19 @@ end stream.
 	var s = stream();
 	s.forEach(log);
 	s.onEnd(function() { console.log('end'); });
-	s.update(2);
+	s.set(2);
 	s.tick(); // -> 2
 	s.end();
 	s.tick(); // -> end
 	// you can still access its final value directly
 	console.log(s.value); // -> 2
 	// but it won't broadcast its value to listeners
-	// in fact, it's an error to update() an ended stream:
-	s.update(3); 
+	// in fact, it's an error to set() an ended stream:
+	s.set(3); 
 	try {
 		s.tick();
 	} catch (e) {
-		console.log(e.message); // -> cannot update ended stream
+		console.log(e.message); // -> cannot set ended stream's value
 	}
 
 Or you can convert an array into a stream that broadcasts a new value
@@ -921,7 +921,7 @@ and same for combine() and possibly others?
 Stream updates are atomic: outside observers will never see inconsistent
 state.  This is achieved using transactions.
 
-Whenever you make a modification on a stream using `.update()`, it starts a
+Whenever you make a modification on a stream using `.set()`, it starts a
 transaction or continues a new one.
 
 A transaction is simply a set of modifications that will be performed on nodes:
@@ -930,7 +930,7 @@ A transaction is simply a set of modifications that will be performed on nodes:
 	//var s = stream(1);
 	//var s2 = s.map(double);
 	//log(stream.tx); // -> []
-	//s.update(2);
+	//s.set(2);
 	//log(s.value); // -> undefined
 	//log(s2.value); // -> undefined
 

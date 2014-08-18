@@ -9,14 +9,12 @@ As we've seen, transactions are what make streams tick.
 Quite literally so, as the function `stream.tick()` is what is used to complete a
 transaction.
 
-TODO this is fiction still
-
 	var s = stream();
-	s.update(123);
+	s.set(123);
 	s.forEach(function(value) { console.log(value); });
 	stream.tick();
 	// -> 123
-	s.update(234);
+	s.set(234);
 	stream.tick();
 	// -> 234
 
@@ -43,7 +41,7 @@ How to implement ticks, then?
 	stream.prototype.delayOneTick = function() {
 		var result = stream();
 		this.forEach(function(value) {
-			result.update(value);
+			result.set(value);
 		});
 	}
 
