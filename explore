@@ -14,8 +14,8 @@ console.log('s3             : stream.combine(s1, s2, function(a, b) { return [a,
 console.log('');
 console.log('Things to try:');
 console.log('');
-console.log('s1.update(1);');
-console.log('s1.update(2); s2.update(3) // test transactions');
+console.log('s1.set(1);');
+console.log('s1.set(2); s2.set(3) // test transactions');
 console.log('stream.fromArray([1,2,3,4,5]).log(\'got\')');
 console.log('stream.fromString(\'foo\').(\'char \')');
 console.log('');

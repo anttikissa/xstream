@@ -181,9 +181,9 @@ var defer = typeof process !== 'undefined' && process.nextTick
 // Function[] listeners: Array of functions that will be called after each
 //     tick. The listener takes on argument, which is the new value, and its
 //     'this' will be set to the stream that was changed.
-// Function updater: a function that is called after either this.update() has
+// Function updater: a function that is called after either this.set() has
 //     been called, or one of this stream's parents is updated.  See
-//     Stream.update() for a detailed description of updater's semantics.
+//     Stream.set() for a detailed description of updater's semantics.
 // optional Object state: some, but not all, streams have a state, and
 //     this is where it lives.  See for example Stream.take(n)
 //
@@ -199,7 +199,7 @@ function Stream(initial) {
 	this.updater = nop;
 
 	if (initial !== undefined) {
-		this.update(initial);
+		this.set(initial);
 	}
 };
 
@@ -302,7 +302,7 @@ Stream.prototype.broadcast = function() {
 Stream.prototype.pull = function() {
 	this.updater.apply(this, this.parents);
 	if (this.newValue !== undefined) {
-		this.update(this.newValue);
+		this.set(this.newValue);
 		delete this.newValue;
 	}
 	return this;
@@ -421,12 +421,69 @@ Stream.prototype.unlink = function() {
 	this.parents = [];
 };
 
-// Stream.update(Object value) -> Stream: Update my value to 'value'.
+function SetAction(stream, value) {
+	this.stream = stream;
+	this.value = value;
+}
+
+SetAction.prototype.preUpdate = function() {
+	if (this.stream.ended()) {
+		throw new Error('cannot set ended stream\'s value');
+	}
+//	console.realLog('!!! preUpdate for stream with updater', this.stream.updater);
+	this.stream.newValue = this.value;
+	return true;
+};
+
+SetAction.prototype.postUpdate = nop;
+
+SetAction.prototype.toString = SetAction.prototype.inspect = function() {
+	return 'set(s' + this.stream.id + ', ' + this.value + ')';
+};
+
+// Stream.set(Object value) -> Stream: Set my value to 'value'.
+//
 // Return this.
-Stream.prototype.update = function(value) {
-	stream.onNextTick(new UpdateAction(this, value));
+Stream.prototype.set = function(value) {
+	// TODO make it so that masterUpdater fails, too. It should be so that
+	// only nop (or whatever source streams have as updaters) is allowed
+	// or even undefined
+	if (this.updater !== nop && this.updater !== masterUpdater) {
+		console.realLog('this.updater', this.updater);
+		throw new Error('fu');
+	}
+	stream.onNextTick(new SetAction(this, value));
 	return this;
 };
+
+function UpdateAction(stream) {
+	this.stream = stream;
+}
+
+UpdateAction.prototype.preUpdate = function() {
+	return true;
+};
+
+UpdateAction.prototype.postUpdate = nop;
+
+UpdateAction.prototype.toString = UpdateAction.prototype.inspect =
+	function() {
+		return 'update(s' + this.stream.id + ')';
+	};
+
+// Stream.update(Object value) -> Stream: Update the value of this stream.
+//
+// Schedule this stream's updater to be run on the next tick.
+// Used to make this stream part of the next transaction without specifying
+// a value for this.
+//
+// Useful for generators and
+//
+// Return this.
+Stream.prototype.update = function() {
+	stream.onNextTick(new UpdateAction(this));
+	return this;
+}
 
 // Stream.end() -> Stream: End this stream.
 //
@@ -434,7 +491,7 @@ Stream.prototype.update = function(value) {
 // value of this stream.
 //
 // If end() is called outside commit phase, the .ends() stream will update
-// during the next tick.  Calling update() on a stream after end() is called
+// during the next tick.  Calling set() on a stream after end() is called
 // will result in error when the next transaction is committed.
 //
 // If end() is called in the commit phase (i.e. inside a .forEach handler),
@@ -449,7 +506,7 @@ Stream.prototype.end = function() {
 
 // Stream.ended() -> Boolean: Has the stream ended?
 //
-// I.e. is it safe to call .update() on this stream.
+// I.e. is it safe to call .set() on this stream.
 Stream.prototype.ended = function() {
 	// TODO FIXME
 	// enable spec/stream.pre: `end` should end the stream:
@@ -813,7 +870,7 @@ Stream.prototype.collect = function() {
 // tick.
 //
 // It's useful for writing generators, which are streams that are
-// updated on every tick.  For now, though, you have to call .update() on
+// updated on every tick.  For now, though, you have to call .set() on
 // it in order to trigger updates on the dependent streams, to avoid
 // stream.ticks() just ticking forever.
 //
@@ -842,32 +899,17 @@ stream.onNextTick = function(action) {
 	}
 };
 
-function UpdateAction(stream, value) {
-	this.stream = stream;
-	this.value = value;
-}
-
-UpdateAction.prototype.preUpdate = function preUpdate() {
-	if (this.stream.ended()) {
-		throw new Error('cannot update ended stream');
-	}
-	this.stream.newValue = this.value;
-	return true;
-};
-
-UpdateAction.prototype.postUpdate = nop;
-
-UpdateAction.prototype.toString = UpdateAction.prototype.inspect = function() {
-	return 'update(s' + this.stream.id + ', ' + this.value + ')';
-};
-
 function EndAction(stream) {
 	this.stream = stream;
 }
 
 EndAction.prototype.preUpdate = function preUpdate() {
 	var s = this.stream;
-	s.ends().update(mostRecentValue(s));
+	// TODO this SHOULD be enough -- find why it's not enough,
+	// and then ban Stream.set() for every stream whose .updater
+	// is not 'nop'.
+//	s.ends().update();
+	s.ends().set(mostRecentValue(s));
 
 	// TODO who dumps the listeners from .ends() streams? should they
 	// .end() as well
@@ -963,10 +1005,10 @@ function updateOrder(nodes) {
 // TODO clean up the following, it's collected from multiple sources and the
 // same thing is said twice.
 //
-// Updates happen in ticks.  Ticks are triggered by calling the .update()
+// Updates happen in ticks.  Ticks are triggered by calling the .set()
 // method of any stream.  During one tick, one stream can update at most once.
 //
-// - Calling .update() doesn't take effect immediately, but will take
+// - Calling .set() doesn't take effect immediately, but will take
 //   effect eventually (using process.nextTick(), setImmediate(),
 //   setTimeout(..., 1) or similar mechanism)
 // - Parents' updaters are called before their children's updaters
@@ -985,7 +1027,6 @@ function updateOrder(nodes) {
 // tick(): Actual implementation of stream.tick().
 function tick() {
 	// Ensure that stream.ticks is always in the update queue.
-	// TODO maybe make this refresh
 	stream.ticks.update();
 
 	try {
@@ -1005,9 +1046,10 @@ function tick() {
 		for (var i = 0; i < actionQueue.length; i++) {
 			var action = actionQueue[i];
 
-			action.preUpdate();
+			var result = action.preUpdate();
 
-			if (action.stream.newValue !== undefined) {
+			// This is... odd.
+			if (result) {
 				var s = action.stream;
 				if (!updatedStreams[s.id]) {
 					updatedStreamsOrdered.push(s);
@@ -1168,7 +1210,7 @@ function mergeUpdater() {
 //
 // If two or more parent streams are updated during the same tick, the
 // one that comes last in the argument list will take effect. (Note that
-// the order in which the update()s are scheduled doesn't matter.)
+// the order in which the set()s are scheduled doesn't matter.)
 //
 // var s3 = stream.merge(s1, s2);
 //

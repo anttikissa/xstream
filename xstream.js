@@ -445,6 +445,7 @@ SetAction.prototype.toString = SetAction.prototype.inspect = function() {
 Stream.prototype.set = function(value) {
 	// TODO make it so that masterUpdater fails, too. It should be so that
 	// only nop (or whatever source streams have as updaters) is allowed
+	// or even undefined
 	if (this.updater !== nop && this.updater !== masterUpdater) {
 		console.realLog('this.updater', this.updater);
 		throw new Error('fu');
@@ -453,26 +454,34 @@ Stream.prototype.set = function(value) {
 	return this;
 };
 
-function RefreshAction(stream) {
+function UpdateAction(stream) {
 	this.stream = stream;
 }
 
-RefreshAction.prototype.preUpdate = function() {
+UpdateAction.prototype.preUpdate = function() {
 	return true;
 };
 
-RefreshAction.prototype.postUpdate = nop;
+UpdateAction.prototype.postUpdate = nop;
 
-RefreshAction.prototype.toString = RefreshAction.prototype.inspect =
+UpdateAction.prototype.toString = UpdateAction.prototype.inspect =
 	function() {
-		return 'refresh(s' + this.stream.id + ')';
+		return 'update(s' + this.stream.id + ')';
 	};
 
-// Stream.set(Object value) -> Stream: Refresh my value.
+// Stream.update(Object value) -> Stream: Update the value of this stream.
+//
+// Schedule this stream's updater to be run on the next tick.
+// Used to make this stream part of the next transaction without specifying
+// its value.
+//
+// Useful for generators and for 'kickstarting' combined streams.
+//
+// TODO kill 'pull' and replace it with this
 //
 // Return this.
-Stream.prototype.refresh = function() {
-	stream.onNextTick(new RefreshAction(this));
+Stream.prototype.update = function() {
+	stream.onNextTick(new UpdateAction(this));
 	return this;
 }
 
@@ -896,7 +905,10 @@ function EndAction(stream) {
 
 EndAction.prototype.preUpdate = function preUpdate() {
 	var s = this.stream;
-//	s.ends().refresh();
+	// TODO this SHOULD be enough -- find why it's not enough,
+	// and then ban Stream.set() for every stream whose .updater
+	// is not 'nop'.
+//	s.ends().update();
 	s.ends().set(mostRecentValue(s));
 
 	// TODO who dumps the listeners from .ends() streams? should they
@@ -1015,8 +1027,7 @@ function updateOrder(nodes) {
 // tick(): Actual implementation of stream.tick().
 function tick() {
 	// Ensure that stream.ticks is always in the update queue.
-	// TODO maybe make this refresh
-	stream.ticks.refresh();
+	stream.ticks.update();
 
 	try {
 		if (stream.cancelDeferredTick) {
@@ -1266,7 +1277,7 @@ function forUpdater() {
 		return this.end();
 	}
 
-	stream.ticks.refresh();
+	stream.ticks.update();
 }
 
 // Stream.for(Object initialState, Function condition, Function f) -> Stream
@@ -1318,7 +1329,7 @@ stream.for = function(initialState, condition, f) {
 	if (result.ended()) {
 		result.end();
 	} else {
-		result.refresh();
+		result.update();
 	}
 
 	return result;
