@@ -1,0 +1,11 @@
+
+`update` should cause a stream to be updated:
+
+	var s = stream(0);
+	s.tick();
+	var s2 = s.map(function(x) { return x + 1; }).log();
+	s2.update();
+	stream.tick();
+	// -> 1
+
+So.

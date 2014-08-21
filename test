@@ -4,6 +4,7 @@ cd $(dirname $0)
 
 mkdir -p tmp
 SOURCES="README.pre spec/*.pre docs/*.pre"
+#SOURCES=spec/*.pre
 #SOURCES=test*.pre
 ./mktest $SOURCES > tmp/test.js
 echo Generated tmp/test.js from $SOURCES

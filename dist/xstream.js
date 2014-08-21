@@ -201,7 +201,7 @@ function Stream(initial) {
 	if (initial !== undefined) {
 		this.set(initial);
 	}
-};
+}
 
 // Counter for getting the next stream id.
 Stream.nextId = 0;
@@ -298,21 +298,24 @@ Stream.prototype.broadcast = function() {
 // TODO consider the possibility of .combine(), and similar
 // combinators, just .pull()ing their value automatically
 //
-// Return this.
-Stream.prototype.pull = function() {
-	this.updater.apply(this, this.parents);
-	if (this.newValue !== undefined) {
-		this.set(this.newValue);
-		delete this.newValue;
-	}
-	return this;
-};
-
-// Stream.name(String name) -> Stream: Give this stream a name (for debugging).
+// TODO remove this, replace with .update().
 //
 // Return this.
-Stream.prototype.name = function(name) {
-	this._name = name;
+Stream.prototype.pull = function() {
+	this.update();
+//	this.updater.apply(this, this.parents);
+//	if (this.newValue !== undefined) {
+//		this.set(this.newValue);
+//		delete this.newValue;
+//	}
+//	return this;
+};
+
+// Stream.withName(String name) -> Stream: Give this stream a name.
+//
+// Return this.
+Stream.prototype.withName = function(name) {
+	this.name = name;
 	return this;
 }
 
@@ -343,7 +346,7 @@ Stream.prototype.toString = function() {
 //		show(name, '[' + listeners.map(function(f) { return f.toString(); }).join(', ') + ']');
 //	}
 	show('value', this.value);
-	show('name', this._name);
+	show('name', this.name);
 	show('newValue', this.newValue);
 	show('state', JSON.stringify(this.state));
 	showStreams('parents', this.parents);
@@ -374,7 +377,7 @@ Stream.prototype.addChild = function(child) {
 Stream.prototype.removeChild = function(child) {
 	assert(this.children.indexOf(child) !== -1);
 	this.children.splice(this.children.indexOf(child), 1);
-}
+};
 
 // Stream.link(Stream parent, Function updater, Function f = null) -> Stream
 // Stream.link(Stream[] parents, Function updater, Function f = null) -> Stream
@@ -426,13 +429,15 @@ function SetAction(stream, value) {
 	this.value = value;
 }
 
+SetAction.prototype.dependencies = function() {
+	return [this.stream];
+};
+
 SetAction.prototype.preUpdate = function() {
 	if (this.stream.ended()) {
 		throw new Error('cannot set ended stream\'s value');
 	}
-//	console.realLog('!!! preUpdate for stream with updater', this.stream.updater);
 	this.stream.newValue = this.value;
-	return true;
 };
 
 SetAction.prototype.postUpdate = nop;
@@ -452,7 +457,7 @@ Stream.prototype.set = function(value) {
 		console.realLog('this.updater', this.updater);
 		throw new Error('fu');
 	}
-	stream.onNextTick(new SetAction(this, value));
+	stream.scheduleAction(new SetAction(this, value));
 	return this;
 };
 
@@ -460,8 +465,19 @@ function UpdateAction(stream) {
 	this.stream = stream;
 }
 
-UpdateAction.prototype.preUpdate = function() {
-	return true;
+UpdateAction.prototype.preUpdate = nop;
+
+UpdateAction.prototype.dependencies = function() {
+	var result = [];
+	function addDependency(stream) {
+		result.push(stream);
+		stream.parents.forEach(function(stream) {
+			addDependency(stream);
+		});
+	}
+	addDependency(this.stream);
+
+	return result;
 };
 
 UpdateAction.prototype.postUpdate = nop;
@@ -475,13 +491,15 @@ UpdateAction.prototype.toString = UpdateAction.prototype.inspect =
 //
 // Schedule this stream's updater to be run on the next tick.
 // Used to make this stream part of the next transaction without specifying
-// a value for this.
+// its value.
 //
-// Useful for generators and
+// Useful for generators and for 'kickstarting' combined streams.
+//
+// TODO kill 'pull' and replace it with this
 //
 // Return this.
 Stream.prototype.update = function() {
-	stream.onNextTick(new UpdateAction(this));
+	stream.scheduleUpdate(new UpdateAction(this));
 	return this;
 }
 
@@ -500,7 +518,7 @@ Stream.prototype.update = function() {
 // can use .forEach() to schedule the next update, and we can use .end() within
 // a .forEach handler to end them with the current value.
 Stream.prototype.end = function() {
-	stream.onNextTick(new EndAction(this));
+	stream.scheduleAction(new EndAction(this));
 	return this;
 };
 
@@ -806,7 +824,7 @@ Stream.prototype.slice = function(start, end) {
 		return this.skip(start);
 	}
 	return this.skip(start).take(end - start);
-}
+};
 
 // Updater function for Stream.reduce().
 function reduceUpdater(parent) {
@@ -881,29 +899,40 @@ stream.ticks.updater = function() {
 	this.newValue = this.state++;
 };
 
-// Update and end actions are collected into stream.actionQueue, which
-// is then handled by stream.tick().
+// 'set' and 'end' actions are collected into stream.actionQueue, which
+// is then handled by stream.tick().  .set()s and .end()s need to be
+// processed in order, hence the shared queue.
 stream.actionQueue = [];
+
+// 'update' actions are collected into separate queue
+stream.updateQueue = [];
+
+stream.ensureDeferredTick = function() {
+	// Schedule a tick, if one is not already scheduled.
+	if (!stream.cancelDeferredTick) {
+		stream.cancelDeferredTick = defer(tick);
+	}
+};
 
 // Schedule 'action' to be performed on the next tick, and ensure that
 // the next tick happens.
-stream.onNextTick = function(action) {
+stream.scheduleAction = function(action) {
 	stream.actionQueue.push(action);
+	stream.ensureDeferredTick();
+};
 
-	// Schedule a tick, if one is not already scheduled.
-	if (!this.cancelDeferredTick) {
-		var that = this;
-		this.cancelDeferredTick = defer(function() {
-			that.tick();
-		});
-	}
+// Schedule 'action' to be performed on the next tick, and ensure that
+// the next tick happens.
+stream.scheduleUpdate = function(action) {
+	stream.updateQueue.push(action);
+	stream.ensureDeferredTick();
 };
 
 function EndAction(stream) {
 	this.stream = stream;
 }
 
-EndAction.prototype.preUpdate = function preUpdate() {
+EndAction.prototype.preUpdate = function() {
 	var s = this.stream;
 	// TODO this SHOULD be enough -- find why it's not enough,
 	// and then ban Stream.set() for every stream whose .updater
@@ -913,6 +942,10 @@ EndAction.prototype.preUpdate = function preUpdate() {
 
 	// TODO who dumps the listeners from .ends() streams? should they
 	// .end() as well
+};
+
+EndAction.prototype.dependencies = function() {
+	return [];
 };
 
 EndAction.prototype.postUpdate = function postUpdate() {
@@ -1026,8 +1059,11 @@ function updateOrder(nodes) {
 
 // tick(): Actual implementation of stream.tick().
 function tick() {
+	console.realLog('1 update queue', stream.updateQueue.length);
+
 	// Ensure that stream.ticks is always in the update queue.
 	stream.ticks.update();
+	console.realLog('2 update queue', stream.updateQueue.length);
 
 	try {
 		if (stream.cancelDeferredTick) {
@@ -1035,10 +1071,14 @@ function tick() {
 			delete stream.cancelDeferredTick;
 		}
 
+		// TODO this is not updatedStreams.
+		// It's streams that just need to be handled.
 		var updatedStreams = {};
 		var updatedStreamsOrdered = [];
 
 		var actionQueue = stream.actionQueue;
+
+		// TODO simplify
 
 		// We don't cache stream.actionQueue: .preUpdate() phase can schedule
 		// new actions, which causes stream.actionQueue to grow while we're
@@ -1046,26 +1086,52 @@ function tick() {
 		for (var i = 0; i < actionQueue.length; i++) {
 			var action = actionQueue[i];
 
-			var result = action.preUpdate();
+			action.preUpdate();
 
-			// This is... odd.
-			if (result) {
-				var s = action.stream;
-				if (!updatedStreams[s.id]) {
-					updatedStreamsOrdered.push(s);
-					updatedStreams[s.id] = true;
+			var deps = action.dependencies();
+
+			for (var j = 0, len = deps.length; j < len; j++) {
+				var dep = deps[j];
+				if (!updatedStreams[dep.id]) {
+					updatedStreamsOrdered.push(dep);
+					updatedStreams[dep.id] = true;
 				}
 			}
 		}
 
+		var updateQueue = stream.updateQueue;
+		console.realLog('3 update queue', updateQueue.length);
+
+		for (var i = 0; i < updateQueue.length; i++) {
+			var action = updateQueue[i];
+			var deps = action.dependencies();
+			console.realLog('action', action);
+			console.realLog('deps', deps);
+
+			for (var j = 0, len = deps.length; j < len; j++) {
+				var dep = deps[j];
+				if (!updatedStreams[dep.id]) {
+					updatedStreamsOrdered.push(dep);
+					updatedStreams[dep.id] = true;
+				}
+			}
+		}
+
+		console.realLog('updatedStreams', updatedStreams);
+
 	} finally {
-		// Clear the actionQueue
+		// Clear queues
 		stream.actionQueue = [];
+		stream.updateQueue = [];
 	}
 
 	var streamsToUpdate = updateOrder(updatedStreamsOrdered);
 
 	streamsToUpdate.forEach(function(s) {
+		// TODO argh this logic needs to be changed
+		// Because update()'s don't need to check the .hasNewValue
+		// all of them need to be updated anyway
+
 		// Only update if at least one of the parents were updated.
 		// OR if it's stream.ticks. Ugly special case?
 		if (s.parents.some(hasNewValue) || s === stream.ticks) {

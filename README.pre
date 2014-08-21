@@ -1,6 +1,76 @@
 
 # TODO (because this still is mostly for myself)
 
+The difference between combine() and merge();
+
+combine(), like map(), should use mostRecentValue(parent) to get its
+value (in case its updated)
+merge() _can_ not -- because it can never pull its value, really; it
+doesn't know which one was updated last.
+
+Consider the case
+
+
+  s1    s2   s4
+ /  \  /    /
+s5   s3    s6
+       \  /  \
+        s7   s8
+
+s1 = stream(0)
+s2 = stream(0)
+s3 = combine(s1, s2, plus)
+s5 = s1.map(inc)
+
+s4 = stream(0)
+s6 = s4.map(inc)
+
+s7 = combine(s3, s6, plus)
+s8 = s7.map(inc)
+
+stream.tick();
+
+s1.set(1);
+s8.update();
+
+stream.tick();
+
+what should happen?
+
+Should be updated: (s1, s5, s3, s4, s6, s7, s8) 
+
+sets should probably happen first
+because updaters always get their value from upstream
+and settees are the most upstream objects there are
+and ends should be interleaved with the updates (because set(), end() is
+ok within the same tick, but end(), set() is not, at all)
+
+refreshes should just get the reverse dependency tree
+
+so:
+
+first process .set(), and .end() queue
+  do all dependency handling there, mark s1, s3, s4, s5 to be processed
+
+then process .update() queue
+  find all ancestors of updatees, mark them to be processed
+  find update(s3), mark s1, s2, to be processed (s3's ancestors)
+
+process() all that need to be processed
+
+similarly,
+
+var generator = stream().link(stream.ticks, ...);
+
+ticks -> generator
+
+generator.update() causes nothing at .set(), .end() queue
+but on .update() queue, it brings ticks with it
+
+
+
+.combine() plus all need to pick
+
 - Stream.sample() that calls a function on every tick, but it's a
   generator so you can just say Stream.sample(Math.random).interval(100)
   to have it update every 100 ms

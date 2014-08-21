@@ -60,7 +60,11 @@
 
 // Like console.log but shorter to write and can be passed around as a function.
 // TODO strip away logging statements in production build.
-var log = console.log.bind(console);
+//var log = console.log.bind(console);
+
+var log = function log() {
+	(console.realLog ? console.realLog : console.log).apply(null, arguments);
+}
 
 // Assert that 'what' is truthy.
 // TODO strip away assertions in production build.
@@ -94,7 +98,7 @@ function copyArray(args) {
 
 // Has stream been updated during this tick or before?
 function hasValue(s) {
-	return mostRecentValue(s) !== undefined;
+	return valueOf(s) !== undefined;
 }
 
 // Has stream been updated during this tick?
@@ -103,7 +107,7 @@ function hasNewValue(s) {
 }
 
 // Return .newValue if exists, otherwise .value
-function mostRecentValue(s) {
+function valueOf(s) {
 	if (s.hasOwnProperty('newValue'))
 		return s.newValue;
 	return s.value;
@@ -199,7 +203,7 @@ function Stream(initial) {
 	if (initial !== undefined) {
 		this.set(initial);
 	}
-};
+}
 
 // Counter for getting the next stream id.
 Stream.nextId = 0;
@@ -296,21 +300,24 @@ Stream.prototype.broadcast = function() {
 // TODO consider the possibility of .combine(), and similar
 // combinators, just .pull()ing their value automatically
 //
-// Return this.
-Stream.prototype.pull = function() {
-	this.updater.apply(this, this.parents);
-	if (this.newValue !== undefined) {
-		this.set(this.newValue);
-		delete this.newValue;
-	}
-	return this;
-};
-
-// Stream.name(String name) -> Stream: Give this stream a name (for debugging).
+// TODO remove this, replace with .update().
 //
 // Return this.
-Stream.prototype.name = function(name) {
-	this._name = name;
+Stream.prototype.pull = function() {
+	this.update();
+//	this.updater.apply(this, this.parents);
+//	if (this.newValue !== undefined) {
+//		this.set(this.newValue);
+//		delete this.newValue;
+//	}
+//	return this;
+};
+
+// Stream.withName(String name) -> Stream: Give this stream a name.
+//
+// Return this.
+Stream.prototype.withName = function(name) {
+	this.name = name;
 	return this;
 }
 
@@ -341,7 +348,7 @@ Stream.prototype.toString = function() {
 //		show(name, '[' + listeners.map(function(f) { return f.toString(); }).join(', ') + ']');
 //	}
 	show('value', this.value);
-	show('name', this._name);
+	show('name', this.name);
 	show('newValue', this.newValue);
 	show('state', JSON.stringify(this.state));
 	showStreams('parents', this.parents);
@@ -372,7 +379,7 @@ Stream.prototype.addChild = function(child) {
 Stream.prototype.removeChild = function(child) {
 	assert(this.children.indexOf(child) !== -1);
 	this.children.splice(this.children.indexOf(child), 1);
-}
+};
 
 // Stream.link(Stream parent, Function updater, Function f = null) -> Stream
 // Stream.link(Stream[] parents, Function updater, Function f = null) -> Stream
@@ -424,13 +431,15 @@ function SetAction(stream, value) {
 	this.value = value;
 }
 
+SetAction.prototype.dependencies = function() {
+	return [this.stream];
+};
+
 SetAction.prototype.preUpdate = function() {
 	if (this.stream.ended()) {
 		throw new Error('cannot set ended stream\'s value');
 	}
-//	console.realLog('!!! preUpdate for stream with updater', this.stream.updater);
 	this.stream.newValue = this.value;
-	return true;
 };
 
 SetAction.prototype.postUpdate = nop;
@@ -447,10 +456,9 @@ Stream.prototype.set = function(value) {
 	// only nop (or whatever source streams have as updaters) is allowed
 	// or even undefined
 	if (this.updater !== nop && this.updater !== masterUpdater) {
-		console.realLog('this.updater', this.updater);
 		throw new Error('fu');
 	}
-	stream.onNextTick(new SetAction(this, value));
+	stream.scheduleAction(new SetAction(this, value));
 	return this;
 };
 
@@ -458,8 +466,19 @@ function UpdateAction(stream) {
 	this.stream = stream;
 }
 
-UpdateAction.prototype.preUpdate = function() {
-	return true;
+UpdateAction.prototype.preUpdate = nop;
+
+UpdateAction.prototype.dependencies = function() {
+	var result = [];
+	function addDependency(stream) {
+		result.push(stream);
+		stream.parents.forEach(function(stream) {
+			addDependency(stream);
+		});
+	}
+	addDependency(this.stream);
+
+	return result;
 };
 
 UpdateAction.prototype.postUpdate = nop;
@@ -481,7 +500,7 @@ UpdateAction.prototype.toString = UpdateAction.prototype.inspect =
 //
 // Return this.
 Stream.prototype.update = function() {
-	stream.onNextTick(new UpdateAction(this));
+	stream.scheduleUpdate(new UpdateAction(this));
 	return this;
 }
 
@@ -500,7 +519,7 @@ Stream.prototype.update = function() {
 // can use .forEach() to schedule the next update, and we can use .end() within
 // a .forEach handler to end them with the current value.
 Stream.prototype.end = function() {
-	stream.onNextTick(new EndAction(this));
+	stream.scheduleAction(new EndAction(this));
 	return this;
 };
 
@@ -513,7 +532,7 @@ Stream.prototype.ended = function() {
 	// This is ugly, and not even correct. (If stream ends without
 	// ever yielding a value, end() will be updated with undefined and
 	// this will return the wrong result.)
-	return !!this.endStream && mostRecentValue(this.endStream) !== undefined;
+	return !!this.endStream && valueOf(this.endStream) !== undefined;
 };
 
 // stream.CyclicalDependencyError(Stream[] path)
@@ -557,7 +576,7 @@ Stream.prototype.ensureNoCyclicalDependencies = function() {
 
 // Updater function for Stream.rewire().
 function rewireUpdater(parent) {
-	this.newValue = parent.newValue;
+	this.newValue = valueOf(parent);
 }
 
 // Stream.rewire(Stream parent) -> Stream
@@ -578,7 +597,7 @@ Stream.prototype.rewire = function(newParent) {
 //
 // Makes use of 'master' that has been set in '.ends()'.
 function masterUpdater() {
-	this.newValue = mostRecentValue(this.master);
+	this.newValue = valueOf(this.master);
 }
 
 // Utility function for linking the .ends() streams.
@@ -676,7 +695,7 @@ Stream.prototype.endWhen = function(value) {
 
 // Updater function for Stream.map().
 function mapUpdater(parent) {
-	this.newValue = this.f(parent.newValue);
+	this.newValue = this.f(valueOf(parent));
 }
 
 // Return a stream whose value is updated with 'f(x)' whenever this
@@ -695,8 +714,9 @@ Stream.prototype.map = function(f) {
 
 // Updater function for Stream.filter().
 function filterUpdater(parent) {
-	if (this.f(parent.newValue)) {
-		this.newValue = parent.newValue;
+	var value = valueOf(parent);
+	if (this.f(value)) {
+		this.newValue = value;
 	}
 }
 
@@ -713,8 +733,9 @@ Stream.prototype.filter = function(f) {
 
 // Updater function for Stream.uniq().
 function uniqUpdater(parent) {
-	if (this.value !== parent.newValue) {
-		this.newValue = parent.newValue;
+	var value = valueOf(parent);
+	if (this.value !== value) {
+		this.newValue = value;
 	}
 }
 
@@ -737,7 +758,7 @@ function takeUpdater(parent) {
 	if (this.state-- <= 0) {
 		return this.end();
 	}
-	this.newValue = parent.newValue;
+	this.newValue = valueOf(parent);
 }
 
 // Return a stream that yields 'n' first elements of its parent stream,
@@ -752,7 +773,7 @@ function skipUpdater(parent) {
 		this.state--;
 		return;
 	}
-	this.newValue = parent.newValue;
+	this.newValue = valueOf(parent);
 }
 
 // Return a stream that skips the 'n' first elements, then follows the
@@ -779,7 +800,7 @@ Stream.prototype.leave = function(n) {
 
 // Updater function for Stream.slidingWindow().
 function slidingWindowUpdater(parent) {
-	this.newValue = this.value.concat(parent.newValue);
+	this.newValue = this.value.concat(valueOf(parent));
 	while (this.newValue.length > this.state) {
 		this.newValue.shift();
 	}
@@ -807,14 +828,15 @@ Stream.prototype.slice = function(start, end) {
 		return this.skip(start);
 	}
 	return this.skip(start).take(end - start);
-}
+};
 
 // Updater function for Stream.reduce().
 function reduceUpdater(parent) {
+	var value = valueOf(parent);
 	if (this.value !== undefined) {
-		this.newValue = this.f(this.value, parent.newValue);
+		this.newValue = this.f(this.value, value);
 	} else {
-		this.newValue = parent.newValue;
+		this.newValue = value;
 	}
 }
 
@@ -882,38 +904,53 @@ stream.ticks.updater = function() {
 	this.newValue = this.state++;
 };
 
-// Update and end actions are collected into stream.actionQueue, which
-// is then handled by stream.tick().
+// 'set' and 'end' actions are collected into stream.actionQueue, which
+// is then handled by stream.tick().  .set()s and .end()s need to be
+// processed in order, hence the shared queue.
 stream.actionQueue = [];
+
+// 'update' actions are collected into separate queue
+stream.updateQueue = [];
+
+stream.ensureDeferredTick = function() {
+	// Schedule a tick, if one is not already scheduled.
+	if (!stream.cancelDeferredTick) {
+		stream.cancelDeferredTick = defer(tick);
+	}
+};
 
 // Schedule 'action' to be performed on the next tick, and ensure that
 // the next tick happens.
-stream.onNextTick = function(action) {
+stream.scheduleAction = function(action) {
 	stream.actionQueue.push(action);
+	stream.ensureDeferredTick();
+};
 
-	// Schedule a tick, if one is not already scheduled.
-	if (!this.cancelDeferredTick) {
-		var that = this;
-		this.cancelDeferredTick = defer(function() {
-			that.tick();
-		});
-	}
+// Schedule 'action' to be performed on the next tick, and ensure that
+// the next tick happens.
+stream.scheduleUpdate = function(action) {
+	stream.updateQueue.push(action);
+	stream.ensureDeferredTick();
 };
 
 function EndAction(stream) {
 	this.stream = stream;
 }
 
-EndAction.prototype.preUpdate = function preUpdate() {
+EndAction.prototype.preUpdate = function() {
 	var s = this.stream;
 	// TODO this SHOULD be enough -- find why it's not enough,
 	// and then ban Stream.set() for every stream whose .updater
 	// is not 'nop'.
 //	s.ends().update();
-	s.ends().set(mostRecentValue(s));
+	s.ends().set(valueOf(s));
 
 	// TODO who dumps the listeners from .ends() streams? should they
 	// .end() as well
+};
+
+EndAction.prototype.dependencies = function() {
+	return [];
 };
 
 EndAction.prototype.postUpdate = function postUpdate() {
@@ -1021,14 +1058,17 @@ function updateOrder(nodes) {
 // updates the value of this stream), or do nothing.  A parent stream's
 // .newValue has been set if and only if it has been updated during this tick.
 // Updaters can also use the helper functions hasValue(Stream),
-// hasNewValue(Stream), and mostRecentValue(Stream) to access the parents'
+// hasNewValue(Stream), and valueOf(Stream) to access the parents'
 // value within the transaction.
 //
 
 // tick(): Actual implementation of stream.tick().
 function tick() {
+
 	// Ensure that stream.ticks is always in the update queue.
 	stream.ticks.update();
+
+	// TODO simplify. Simplify a lot. I mean it
 
 	try {
 		if (stream.cancelDeferredTick) {
@@ -1036,8 +1076,13 @@ function tick() {
 			delete stream.cancelDeferredTick;
 		}
 
+		// Streams that will potentially updated
 		var updatedStreams = {};
 		var updatedStreamsOrdered = [];
+
+		// Streams that will be force-updated because one of their
+		// descendants has called .update() ('pull updates')
+		var streamsToForceUpdate = {};
 
 		var actionQueue = stream.actionQueue;
 
@@ -1047,29 +1092,45 @@ function tick() {
 		for (var i = 0; i < actionQueue.length; i++) {
 			var action = actionQueue[i];
 
-			var result = action.preUpdate();
+			action.preUpdate();
 
-			// This is... odd.
-			if (result) {
-				var s = action.stream;
-				if (!updatedStreams[s.id]) {
-					updatedStreamsOrdered.push(s);
-					updatedStreams[s.id] = true;
+			var deps = action.dependencies();
+
+			for (var j = 0, len = deps.length; j < len; j++) {
+				var dep = deps[j];
+				if (!updatedStreams[dep.id]) {
+					updatedStreamsOrdered.push(dep);
+					updatedStreams[dep.id] = true;
+				}
+			}
+		}
+
+		var updateQueue = stream.updateQueue;
+
+		for (var i = 0; i < updateQueue.length; i++) {
+			var action = updateQueue[i];
+			var deps = action.dependencies();
+
+			for (var j = 0, len = deps.length; j < len; j++) {
+				var dep = deps[j];
+				if (!updatedStreams[dep.id]) {
+					updatedStreamsOrdered.push(dep);
+					updatedStreams[dep.id] = true;
+					streamsToForceUpdate[dep.id] = true;
 				}
 			}
 		}
 
 	} finally {
-		// Clear the actionQueue
+		// Clear queues
 		stream.actionQueue = [];
+		stream.updateQueue = [];
 	}
 
 	var streamsToUpdate = updateOrder(updatedStreamsOrdered);
 
 	streamsToUpdate.forEach(function(s) {
-		// Only update if at least one of the parents were updated.
-		// OR if it's stream.ticks. Ugly special case?
-		if (s.parents.some(hasNewValue) || s === stream.ticks) {
+		if (s.parents.some(hasNewValue) || streamsToForceUpdate[s.id]) {
 			s.updater.apply(s, s.parents);
 		}
 	});
@@ -1118,20 +1179,20 @@ stream.tick = function(times) {
 
 function combine2Updater(firstParent, secondParent) {
 	this.newValue = this.f(
-		mostRecentValue(firstParent),
-		mostRecentValue(secondParent));
+		valueOf(firstParent),
+		valueOf(secondParent));
 }
 
 // TODO is this necessary?
 function combine3Updater(firstParent, secondParent, thirdParent) {
 	this.newValue = this.f(
-		mostRecentValue(firstParent),
-		mostRecentValue(secondParent),
-		mostRecentValue(thirdParent));
+		valueOf(firstParent),
+		valueOf(secondParent),
+		valueOf(thirdParent));
 }
 
 function combineUpdater() {
-	var values = this.parents.map(mostRecentValue);
+	var values = this.parents.map(valueOf);
 	this.newValue = this.f.apply(null, values);
 };
 
@@ -1152,8 +1213,8 @@ stream.combine = function combine() {
 function combineWhenAll2Updater(firstParent, secondParent) {
 	if (hasValue(firstParent) && hasValue(secondParent)) {
 		this.newValue = this.f(
-			mostRecentValue(firstParent),
-			mostRecentValue(secondParent));
+			valueOf(firstParent),
+			valueOf(secondParent));
 	}
 }
 
@@ -1162,15 +1223,15 @@ function combineWhenAll3Updater(firstParent, secondParent, thirdParent) {
 	if (hasValue(firstParent) && hasValue(secondParent) &&
 		hasValue(thirdParent)) {
 		this.newValue = this.f(
-			mostRecentValue(firstParent),
-			mostRecentValue(secondParent),
-			mostRecentValue(thirdParent));
+			valueOf(firstParent),
+			valueOf(secondParent),
+			valueOf(thirdParent));
 	}
 }
 
 function combineWhenAllUpdater() {
 	if (this.parents.every(hasValue)) {
-		var values = this.parents.map(mostRecentValue);
+		var values = this.parents.map(valueOf);
 		this.newValue = this.f.apply(null, values);
 	}
 };
@@ -1317,7 +1378,7 @@ stream.for = function(initialState, condition, f) {
 		// object directly), duplicates code, etc.
 		// Get rid of this hack!
 		result.ended = function() {
-			if (this.endStream && mostRecentValue(this.endStream) !== undefined)
+			if (this.endStream && valueOf(this.endStream) !== undefined)
 				return true;
 			return !condition.apply(this);
 		}
@@ -1354,7 +1415,7 @@ stream.count = function(initial) {
 //
 // Set the the first value in the current transaction and the following
 // values in following transactions.
-stream.fromArray = function fromArray(array) {
+stream.fromArray = function(array) {
 	return stream.for(
 		copyArray(array),
 		function() { return this.state.length; },
