@@ -722,6 +722,7 @@ function uniqUpdater(parent) {
 // when the value changes.  Similar to the UNIX tool uniq(1).
 //
 // TODO use custom equals function
+// TODO is .ends() linked?
 //
 // var s2 = s1.uniq()
 //
@@ -1236,9 +1237,7 @@ stream.merge = function merge() {
 // s2:                a             b      c
 // s3: [1, undefined] [1, a] [1, a] [1, b] [2, c]
 stream.zip = function() {
-	var args = copyArray(arguments);
-	args.push(Array);
-	return stream.combine.apply(null, args);
+	return stream.combine.apply(null, copyArray(arguments).concat(Array));
 };
 
 //
