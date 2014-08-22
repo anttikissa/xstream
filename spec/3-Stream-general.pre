@@ -1,0 +1,64 @@
+## Tests for chapter 3 - Stream general methods.
+
+`withInitialValue` sets `.value`:
+
+	var s = stream().withInitialValue(123);
+	console.log(s.value); // -> 123
+
+`forEach` receives values on the tick following `.set`:
+
+	var s = stream();
+	s.forEach(function(value) {
+		console.log(value);
+	});
+
+	s.tick();
+	// no effect
+
+	s.set(1);
+	s.tick();
+	// -> 1
+
+Two `forEach` handlers:
+
+	var s = stream();
+	s.forEach(function(value) { console.log('first', value); });
+	s.forEach(function(value) { console.log('second', value); });
+
+	s.set(1);
+	s.tick();
+	// -> first 1; second 1
+
+`broadcast`:
+
+	var s = stream().withInitialValue(1);
+	s.forEach(function(value) {
+		console.log('value', value);
+	});
+	s.broadcast();
+	// -> value 1
+
+`log`:
+
+	var s = stream().log();
+	s.set('hello');
+	s.tick();
+	// -> hello
+
+`log` with prefix:
+
+	var s = stream().log('prefix');
+	s.set(123);
+	s.tick();
+	// -> prefix 123
+
+
+
+
+
+
+
+
+
+
+x

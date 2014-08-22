@@ -2,7 +2,7 @@ var TIME = 6;
 
 function declareSuite() {
 	var suite = suites[0];
-	realLog('Running tests from ' + suite.name + '...');
+	realLog('\nRunning tests from ' + suite.name + '...\n');
 }
 
 // TODO make use of a concept like 'test is done' and somehow arrange
