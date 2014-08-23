@@ -167,30 +167,54 @@ test.stream.tick = function() {
 	stream.tick();
 };
 
-function testAll(object, parentName, parentIdx) {
+var tests = [];
+
+function collectTests(object, parentName, parentIdx) {
 	var testIdx = 1;
 
-	object = object || test;
-
 	for (var testName in object) {
-		try {
-			var wholeIdx = parentIdx ? (parentIdx + '.' + testIdx) : testIdx;
-			var wholeName = parentName ? (parentName + '.' + testName) : testName;
-			log('Test ' + wholeIdx + ': ' + wholeName + '\n');
-			object[testName]();
-			expectNoOutput();
+		var wholeIdx = parentIdx ? (parentIdx + '.' + testIdx) : testIdx;
+		var wholeName = parentName ? (parentName + '.' + testName) : testName;
 
-			testAll(object[testName], wholeName, wholeIdx);
-			testIdx++;
+		var title = 'Test ' + wholeIdx + ': ' + wholeName;
+		var testFunction = object[testName];
+		tests.push([title, testFunction]);
+		collectTests(object[testName], wholeName, wholeIdx);
+
+		testIdx++;
+	}
+}
+
+function testAll() {
+	collectTests(test);
+
+	function runTest() {
+		var nextTest = tests.shift();
+		if (!nextTest) {
+			return;
+		}
+
+		var title = nextTest[0], f = nextTest[1];
+
+		try {
+			log(title + '\n');
+			f();
+			expectNoOutput();
 		} catch (e) {
 			log('Error:', e.message + '\n');
 			log(e.stack.split('\n').slice(e.skipLines || 0).join('\n'));
 			terminate();
 		}
+
+		runTest();
 	}
+
+	runTest();
 }
 
 module.exports = stream;
 
-testAll();
+if (process.env.XSTREAM_TEST) {
+	testAll();
+}
 

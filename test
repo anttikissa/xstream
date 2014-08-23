@@ -2,7 +2,7 @@
 
 cd $(dirname $0)
 
-node xstream.js
+XSTREAM_TEST=all node xstream.js
 
 #mkdir -p tmp
 #SOURCES="README.pre spec/*.pre docs/*.pre"
