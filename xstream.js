@@ -82,9 +82,16 @@ function assert(what, message, skipFrame) {
 }
 
 function expect(string) { 
-	var next = consoleOutput.shift();
-	assert(typeof next === 'string', 'expected "' + string + '", got no output', true);
-	assert(next === string, 'expected "' + string + '", got "' + next + '"', true);
+	var strings = [string];
+	if (contains(string, '; ')) {
+		strings = string.split('; ');
+	}
+	for (var i = 0; i < strings.length; i++) {
+		var expected = strings[i];
+		var actual = consoleOutput.shift();
+		assert(typeof actual === 'string', 'expected "' + expected + '", got no output', true);
+		assert(actual === expected, 'expected "' + expected + '", got "' + actual + '"', true);
+	}
 }
 
 function expectNoOutput() {
@@ -190,8 +197,7 @@ test.Stream.broadcast = function() {
 	});
 
 	s.broadcast();
-	expect('first 123');
-	expect('second 123');
+	expect('first 123; second 123');
 };
 
 Stream.prototype.forEach = function(listener) {
@@ -218,6 +224,10 @@ test.Stream.forEach = function() {
 //
 // Chapter 4 - Stream operators
 //
+
+Stream.prototype.map = function(f) {
+	
+};
 
 // TODO
 
@@ -267,7 +277,7 @@ test.stream.ensureDeferredTick = function() {
 
 stream.streamsToUpdate = [];
 
-stream.tick = function() {
+stream.tick = function(n) {
 	if (stream.cancelDeferredTick) {
 		stream.cancelDeferredTick();
 		delete stream.cancelDeferredTick;
@@ -284,14 +294,51 @@ stream.tick = function() {
 		}
 	}
 
+	stream.streamsToUpdate = [];
+
 	for (var id in updated) {
 		updated[id].broadcast();
 	}
-	
-	stream.streamsToUpdate = [];
+
+	if (n > 1) {
+		stream.tick(n - 1);
+	}
 };
 
 test.stream.tick = function() {
+	// The actual functionality of 'tick' is in fact tested in lots of
+	// places; see tests for Stream.set(), Stream.forEach(), 
+	// stream.ensureDeferredTick, etc.  So we just test giving
+	// '.tick(n)' an argument, which should tick 'n' times.
+	
+	// A simple counter.
+	var s = stream();
+	function inc(value) {
+		this.set(value + 1);
+	}
+	s.forEach(inc);
+	s.set(0);
+	stream.tick();
+	assert(s.value === 0);
+	stream.tick();
+	assert(s.value === 1);
+
+	// A crude way to stop the stream from ticking.
+	// TODO when there's .stop(), use that.
+	s.listeners = [];
+	stream.tick();
+
+	s.set(0);
+	s.forEach(inc);
+	stream.tick();
+	assert(s.value === 0);
+	// Now call it 5 times.
+	stream.tick(5);
+	assert(s.value === 5);
+
+	// A crude way to stop the stream from ticking.
+	// TODO when there's .stop(), use that.
+	s.listeners = [];
 	stream.tick();
 };
 
@@ -303,6 +350,7 @@ stream.fromArray = function() {
 	var result = stream();
 	return result;
 };
+
 
 //
 // Chapter 10 - Test machinery
