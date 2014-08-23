@@ -110,6 +110,8 @@ function stream(value) {
 	return new Stream(value);
 }
 
+module.exports = stream;
+
 stream.streamsToUpdate = [];
 
 test.stream = function() {
@@ -142,7 +144,7 @@ Stream.prototype.set = function(value) {
 	return this;
 };
 
-test.Stream.set = function() {
+test.Stream.set = function(done) {
 	var s = stream();
 	var s2 = s.set(123);
 	assert(s === s2, 'stream.set() should return the stream itself');
@@ -151,6 +153,10 @@ test.Stream.set = function() {
 	stream.tick();
 	assert(!contains(stream.streamsToUpdate, s), 'tick should clear stream.streamsToUpdate');
 	assert(s.value === 123, 'stream.value should be set after tick()');
+
+	setTimeout(function() {
+		done();
+	}, 300);
 };
 
 stream.tick = function() {
@@ -196,23 +202,28 @@ function testAll() {
 
 		var title = nextTest[0], f = nextTest[1];
 
+		function done() {
+			expectNoOutput();
+			runTest();
+		}
+
 		try {
 			log(title + '\n');
-			f();
-			expectNoOutput();
+			if (f.length === 1) {
+				f(done);
+			} else {
+				f();
+				done();
+			}
 		} catch (e) {
 			log('Error:', e.message + '\n');
 			log(e.stack.split('\n').slice(e.skipLines || 0).join('\n'));
 			terminate();
 		}
-
-		runTest();
 	}
 
 	runTest();
 }
-
-module.exports = stream;
 
 if (process.env.XSTREAM_TEST) {
 	testAll();
