@@ -1,0 +1,5 @@
+`.map()` should pull its value immediately:
+
+	console.log(stream(1).tick().map(stream.util.inc).value);
+	// -> 2
+
