@@ -21,6 +21,16 @@ function nop() {}
 function contains(array, object) { return array.indexOf(object) !== -1; }
 function remove(array, object) { array.splice(array.indexOf(object), 1); }
 
+// Find first element in array that satisfies test(element), or undefined
+function find(array, test) {
+	for (var i = 0, len = array.length; i < len; i++) {
+		var item = array[i];
+		if (test(item)) {
+			return item;
+		}
+	}
+}
+
 // Make a shallow copy of an array or an array-like object.
 function copyArray(args) {
 	return Array.prototype.slice.apply(args);
@@ -29,6 +39,13 @@ function copyArray(args) {
 // Has stream been updated during this tick?
 function hasNewValue(s) {
 	return s.hasOwnProperty('newValue');
+}
+
+// Return .newValue if exists, otherwise .value
+function valueOf(s) {
+	if (s.hasOwnProperty('newValue'))
+		return s.newValue;
+	return s.value;
 }
 
 // Implementation of 'defer' using process.nextTick()
@@ -118,9 +135,11 @@ test = {};
 // Chapter 2 - Stream() and stream()
 //
 function Stream(value) {
-	this.value = value;
-	this.listeners = [];
 	this.id = Stream.nextId++;
+	this.value = value;
+	this.children = [];
+	this.parents = [];
+	this.listeners = [];
 }
 
 Stream.nextId = 1;
@@ -132,6 +151,8 @@ test.Stream = function() {
 	assert(s instanceof Stream);
 	assert(s.value === undefined);
 	assert(s.listeners.length === 0);
+	assert(s.children.length === 0);
+	assert(s.parents.length === 0);
 
 	assert(new Stream(123).value === 123);
 
@@ -254,10 +275,31 @@ test.Stream.log = function() {
 //
 
 Stream.prototype.map = function(f) {
-	
+	var result = stream();
+	result.f = f;
+	result.update = function(parent) {
+		this.newValue = this.f(valueOf(parent));
+	};
+	result.parents = [this];
+	this.children.push(result);
+
+	// TODO pull
+
+	return result;
 };
 
-// TODO
+test.Stream.map = function() {
+	var s = stream();
+	var s2 = s.map(inc).log('s2');
+	var s3 = s2.map(inc).log('s3');
+	s.set(1);
+	stream.tick();
+	expect('s2 2; s3 3');
+
+//	var s4 = stream(1);
+//	var s5 = s4.map(inc);
+//	assert(s5.value === 2);
+};
 
 //
 // Chapter 5 - stream general functions
@@ -305,27 +347,105 @@ test.stream.ensureDeferredTick = function() {
 
 stream.streamsToUpdate = [];
 
+
+// updateOrder(Stream[] streams)
+// Given an array of streams to update, create a graph of those streams
+// and their dependencies and return a topological ordering of that graph
+// where parents come before their children.
+//
+// nodes: array of Streams
+//
+// The algorithm assumes that 'nodes' only contains a single instance of
+// each stream.
+//
+// TODO clarify the order in which the updates happen.
+// Should we start updating from the nodes that come first?
+//
+function updateOrder(nodes) {
+	parentCounts = {};
+	allNodes = {};
+	nodesToUpdate = [];
+
+	// Find all nodes reachable from 'node'
+	// and record into 'parentCounts' the amount of incoming edges
+	// within this graph.
+	function findNodesToUpdate(node) {
+		if (allNodes.hasOwnProperty(node.id)) {
+			// We have already calculated the parent counts descending
+			// from this node.
+			return;
+		}
+		allNodes[node.id] = node;
+		node.children.forEach(function(child) {
+			parentCounts[child.id] = (parentCounts[child.id] || 0) + 1;
+			findNodesToUpdate(child);
+		});
+	}
+
+	nodes.forEach(function(node) {
+		findNodesToUpdate(node);
+	});
+
+	// If we didn't find a parent count with findNodesToUpdate, it's zero
+	nodes.forEach(function(node) {
+		if (parentCounts[node.id] === undefined) {
+			parentCounts[node.id] = 0;
+		}
+	});
+
+	function removeNode(nodeKey) {
+		assert(nodeKey);
+		var node = allNodes[nodeKey];
+		node.children.forEach(function(child) {
+			parentCounts[child.id]--;
+		});
+		delete parentCounts[nodeKey];
+		delete allNodes[nodeKey];
+		nodesToUpdate.push(node);
+	}
+
+	// if there are cycles, this one will never terminate
+	while (true) {
+		var nodeKeys = Object.keys(parentCounts);
+		if (nodeKeys.length === 0) {
+			break;
+		}
+
+		var nodeKeyWithZeroParents = find(nodeKeys, function(nodeKey) {
+			assert(parentCounts[nodeKey] >= 0);
+			return parentCounts[nodeKey] === 0;
+		});
+
+		removeNode(nodeKeyWithZeroParents);
+	}
+
+	return nodesToUpdate;
+}
+
 stream.tick = function(n) {
 	if (stream.cancelDeferredTick) {
 		stream.cancelDeferredTick();
 		delete stream.cancelDeferredTick;
 	}
 
-	var updated = {};
-
-	for (var i = 0, len = stream.streamsToUpdate.length; i < len; i++) {
-		var s = stream.streamsToUpdate[i];
-		if (hasNewValue(s)) {
-			updated[s.id] = s;
-			s.value = s.newValue;
-			delete s.newValue;
-		}
-	}
+	var streamsToUpdate = updateOrder(stream.streamsToUpdate);
 
 	stream.streamsToUpdate = [];
 
-	for (var id in updated) {
-		updated[id].broadcast();
+	for (var i = 0, len = streamsToUpdate.length; i < len; i++) {
+		var s = streamsToUpdate[i];
+		if (s.parents.some(hasNewValue)) {
+			s.update.apply(s, s.parents);
+		}
+	}
+
+	for (var i = 0, len = streamsToUpdate.length; i < len; i++) {
+		var s = streamsToUpdate[i];
+		if (hasNewValue(s)) {
+			s.value = s.newValue;
+			delete s.newValue;
+			s.broadcast();
+		}
 	}
 
 	if (n > 1) {
