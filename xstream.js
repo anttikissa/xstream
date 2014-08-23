@@ -116,9 +116,11 @@ test = {};
 // Chapter 2 - Stream() and stream()
 //
 function Stream(value) {
-	this.value = value;
-	this.listeners = [];
 	this.id = Stream.nextId++;
+	this.value = value;
+	this.children = [];
+	this.parents = [];
+	this.listeners = [];
 }
 
 Stream.nextId = 1;
@@ -130,6 +132,8 @@ test.Stream = function() {
 	assert(s instanceof Stream);
 	assert(s.value === undefined);
 	assert(s.listeners.length === 0);
+	assert(s.children.length === 0);
+	assert(s.parents.length === 0);
 
 	assert(new Stream(123).value === 123);
 
@@ -252,10 +256,30 @@ test.Stream.log = function() {
 //
 
 Stream.prototype.map = function(f) {
-	
+	var result = stream();
+	result.f = f;
+	stream.update = function() {
+		this.newValue = this.f(stream.parents[0]);
+	};
+	result.parents = [this];
+	this.children.push(result);
+
+	// TODO pull
+
+	return result;
 };
 
-// TODO
+test.Stream.map = function() {
+	var s = stream();
+	var s2 = s.map(inc).log('s2');
+	var s3 = s2.map(inc).log('s3');
+	s.set(1);
+	expect('s2 2; s3 3');
+
+	var s4 = stream(1);
+	var s5 = s4.map(inc);
+	assert(s5.value === 2);
+};
 
 //
 // Chapter 5 - stream general functions
