@@ -14,9 +14,47 @@
 function plus(x, y) { return x + y; }
 function inc(x) { return x + 1; }
 
+function contains(array, object) { return array.indexOf(object) !== -1; }
+
 // Make a shallow copy of an array or an array-like object.
 function copyArray(args) {
 	return Array.prototype.slice.apply(args);
+}
+
+// Implementation of 'defer' using process.nextTick()
+function deferNextTick(f) {
+	var canceled = false;
+
+	function run() {
+		if (!canceled) {
+			f();
+		}
+	}
+
+	process.nextTick(run);
+
+	return function() {
+		canceled = true;
+	};
+}
+
+// Implementation of 'defer' using setTimeout()
+function deferTimeout(f) {
+	var timeout = setTimeout(f);
+	return function() {
+		clearTimeout(timeout);
+	};
+}
+
+// defer(Function f) -> Function
+// Call 'f' at a later time. Return a function that can be called to
+// cancel the the deferred call.
+var defer = typeof process !== 'undefined' && process.nextTick
+	? deferNextTick : deferTimeout;
+
+// Terminate the process.  For tests.
+function terminate() {
+	process.exit(0);
 }
 
 // Assert that 'what' is truthy.
@@ -24,9 +62,13 @@ function copyArray(args) {
 function assert(what, message) {
 	if (!what) {
 		if (message) {
-			throw new Error('assert failed: ' + message);
+			var e = new Error('assert failed: ' + message);
+			e.skipLines = 3;
+			throw e;
 		} else {
-			throw new Error('assert failed');
+			var e = new Error('assert failed');
+			e.skipLines = 3;
+			throw e;
 		}
 	}
 }
@@ -35,6 +77,11 @@ function expect(string) {
 	var next = consoleOutput.shift();
 	assert(typeof next === 'string', 'expected "' + string + '", got no output');
 	assert(next === string, 'expected "' + string + '", got "' + next + '"');
+}
+
+function expectNoOutput() {
+	assert(consoleOutput.length === 0, 'expected no output, got "' +
+		consoleOutput[0]);
 }
 
 // Actually just log output
@@ -63,6 +110,8 @@ function stream(value) {
 	return new Stream(value);
 }
 
+stream.streamsToUpdate = [];
+
 test.stream = function() {
 	assert(typeof stream === 'function');
 	assert(stream() instanceof Stream);
@@ -87,13 +136,35 @@ test.stream.log = function() {
 	expect('hello');
 };
 
+Stream.prototype.set = function(value) {
+	stream.streamsToUpdate.push(this);
+	this.newValue = value;
+	return this;
+};
+
+test.Stream.set = function() {
+	var s = stream();
+	var s2 = s.set(123);
+	assert(s === s2, 'stream.set() should return the stream itself');
+	assert(contains(stream.streamsToUpdate, s));
+	assert(s.value === undefined, 'stream.value should be undefined before tick()');
+	stream.tick();
+	assert(!contains(stream.streamsToUpdate, s), 'tick should clear stream.streamsToUpdate');
+	assert(s.value === 123, 'stream.value should be set after tick()');
+};
+
 stream.tick = function() {
-	stream.log('tick');
+	for (var i = 0, len = stream.streamsToUpdate.length; i < len; i++) {
+		var s = stream.streamsToUpdate[i];
+		s.value = s.newValue;
+		delete s.newValue;
+	}
+
+	stream.streamsToUpdate = [];
 };
 
 test.stream.tick = function() {
 	stream.tick();
-	expect('tick');
 };
 
 function testAll(object, parentName, parentIdx) {
@@ -105,15 +176,16 @@ function testAll(object, parentName, parentIdx) {
 		try {
 			var wholeIdx = parentIdx ? (parentIdx + '.' + testIdx) : testIdx;
 			var wholeName = parentName ? (parentName + '.' + testName) : testName;
-			log('\nTest ' + wholeIdx + ': ' + wholeName + '\n');
+			log('Test ' + wholeIdx + ': ' + wholeName + '\n');
 			object[testName]();
-			consoleOutput = [];
+			expectNoOutput();
 
 			testAll(object[testName], wholeName, wholeIdx);
 			testIdx++;
 		} catch (e) {
-			log('\nError:', e.message + '\n');
-			log(e.stack.split('\n').slice(3).join('\n'));
+			log('Error:', e.message + '\n');
+			log(e.stack.split('\n').slice(e.skipLines || 0).join('\n'));
+			terminate();
 		}
 	}
 }
