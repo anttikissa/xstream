@@ -34,6 +34,11 @@ function copyArray(args) {
 	return Array.prototype.slice.apply(args);
 }
 
+// Has stream been updated during this tick or before?
+function hasValue(s) {
+	return valueOf(s) !== undefined;
+}
+
 // Has stream been updated during this tick?
 function hasNewValue(s) {
 	return s.hasOwnProperty('newValue');
@@ -243,6 +248,45 @@ test.Stream.forEach = function() {
 	});
 };
 
+Stream.prototype.pull = function() {
+	// TODO repeats code from tick().
+	if (this.parents.some(hasValue)) {
+		this.update.apply(this, this.parents);
+	}
+	if (hasNewValue(this)) {
+		this.value = this.newValue;
+		delete this.newValue;
+	}
+
+	return this;
+};
+
+test.Stream.pull = function() {
+	var parent = stream(123);
+	var child = stream();
+	child.parents = [parent];
+	parent.children = [child];
+	child.update = function(parent) {
+		this.newValue = valueOf(parent);
+	};
+
+	assert(child.value === undefined, "child shouldn't get a value automatically");
+	stream.tick();
+	assert(child.value === undefined, "not even if stream.tick() happens");
+	child.pull();
+	assert(child.value === 123, "when it a child calls .pull(), it finally gets one");
+
+	// Start again, this time with a valueless parent.
+	parent = stream();
+	child = stream();
+	child.parents = [parent];
+	parent.children = [child];
+	child.update = function(parent) {
+		throw new Error(".pull() should never call update() if there's no value");
+	};
+	child.pull();
+};
+
 // Stream.log() -> Stream: Log my values.
 // Stream.log(String prefix) -> Stream: Log my values, predeced by 'prefix'.
 //
@@ -281,7 +325,7 @@ Stream.prototype.map = function(f) {
 	result.parents = [this];
 	this.children.push(result);
 
-	// TODO pull
+	result.pull();
 
 	return result;
 };
@@ -294,9 +338,14 @@ test.Stream.map = function() {
 	stream.tick();
 	expect('s2 2; s3 3');
 
-//	var s4 = stream(1);
-//	var s5 = s4.map(inc);
-//	assert(s5.value === 2);
+	var s4 = stream(1);
+	var s5 = s4.map(inc);
+	assert(s5.value === 2, 'if parent has a value, map() should pull it immediately');
+
+	var s6 = stream();
+	var s7 = s6.map(function() {
+		throw new Error("map() shouldn't try to pull its value if parent doesn't have it");
+	});
 };
 
 //
