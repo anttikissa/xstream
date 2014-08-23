@@ -875,13 +875,11 @@ Stream.prototype.collect = function() {
 // tick.
 //
 // It's useful for writing generators, which are streams that are
-// updated on every tick.  For now, though, you have to call .set() on
-// it in order to trigger updates on the dependent streams, to avoid
-// stream.ticks() just ticking forever.
+// updated on every tick.
 //
 // TODO there should be a better solution to make streams stop after they
 // have ticked without any listeners for a while.  Should there?
-stream.ticks = stream().withState(0);
+stream.ticks = stream().withState(0).withName('ticks');
 stream.ticks.updater = function() {
 	this.newValue = this.state++;
 };
@@ -1322,7 +1320,7 @@ function forUpdater() {
 		return this.end();
 	}
 
-	stream.ticks.update();
+	this.update();
 }
 
 // Stream.for(Object initialState, Function condition, Function f) -> Stream
@@ -1331,10 +1329,11 @@ function forUpdater() {
 //
 // initialState: Resulting stream's .state will be set to this.
 // condition: Keep running as long as this function returns a truthy value.
-// f: Produce the next value and update this.state.
+// f: Update this.state and return the next value.
 //
 // 'for' is used like a for loop, except that 'f' is responsible
-// for both updating the internal state and producing a
+// for both updating the internal state and producing the next value.
+//
 // As an example, a counter that counts from 1 to 5:
 //
 // stream.generator(
@@ -1394,18 +1393,18 @@ stream.count = function(initial) {
 	return stream.loop(initial || 0, function() { return this.state++; });
 };
 
-// Make a stream from an array.
-//
 // stream.fromArray([Object]) -> Stream
 //
-// Set the the first value in the current transaction and the following
-// values in following transactions.
+// Make a generator stream that yields all values of the array, and then
+// ends.
 stream.fromArray = function(array) {
 	return stream.for(
 		copyArray(array),
 		function() { return this.state.length; },
 		function() { return this.state.shift(); });
 };
+
+// Make a stream from a range
 
 stream.fromRange = function fromRange(start, end, step) {
 	end = end !== undefined ? end : Infinity;
