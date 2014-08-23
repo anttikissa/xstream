@@ -59,15 +59,16 @@ function terminate() {
 
 // Assert that 'what' is truthy.
 // TODO strip away assertions in production build.
-function assert(what, message) {
+function assert(what, message, skipFrame) {
+	var skipLines = skipFrame ? 3 : 2;
 	if (!what) {
 		if (message) {
 			var e = new Error('assert failed: ' + message);
-			e.skipLines = 3;
+			e.skipLines = skipLines;
 			throw e;
 		} else {
 			var e = new Error('assert failed');
-			e.skipLines = 3;
+			e.skipLines = skipLines;
 			throw e;
 		}
 	}
@@ -75,13 +76,13 @@ function assert(what, message) {
 
 function expect(string) { 
 	var next = consoleOutput.shift();
-	assert(typeof next === 'string', 'expected "' + string + '", got no output');
-	assert(next === string, 'expected "' + string + '", got "' + next + '"');
+	assert(typeof next === 'string', 'expected "' + string + '", got no output', true);
+	assert(next === string, 'expected "' + string + '", got "' + next + '"', true);
 }
 
 function expectNoOutput() {
 	assert(consoleOutput.length === 0, 'expected no output, got "' +
-		consoleOutput[0]);
+		consoleOutput[0], true);
 }
 
 // Actually just log output
@@ -141,6 +142,7 @@ test.stream.log = function() {
 Stream.prototype.set = function(value) {
 	stream.streamsToUpdate.push(this);
 	this.newValue = value;
+	stream.ensureDeferredTick();
 	return this;
 };
 
@@ -155,13 +157,35 @@ test.Stream.set = function(done) {
 	assert(s.value === 1, 'stream.value should be set after tick()');
 
 	s.set(2);
-	setTimeout(function() {
-		assert(s.value === 2);
+	assert(s.value === 1, 's.set() should not set the value immediately');
+	defer(function() {
+		assert(s.value === 2, 's.set() should set the value after the next tick');
 		done();
-	}, 1);
+	});
+};
+
+// Schedule a tick, if one is not already scheduled.
+stream.ensureDeferredTick = function() {
+	if (!stream.cancelDeferredTick) {
+		stream.cancelDeferredTick = defer(stream.tick);
+	}
+};
+
+test.stream.ensureDeferredTick = function() {
+	assert(typeof stream.cancelDeferredTick === 'undefined');
+	stream.ensureDeferredTick();
+	assert(typeof stream.cancelDeferredTick === 'function');
+	// Can be called twice, though this doesn't check for its semantics
+	stream.ensureDeferredTick();
+	assert(typeof stream.cancelDeferredTick === 'function');
 };
 
 stream.tick = function() {
+	if (stream.cancelDeferredTick) {
+		stream.cancelDeferredTick();
+		delete stream.cancelDeferredTick;
+	}
+
 	for (var i = 0, len = stream.streamsToUpdate.length; i < len; i++) {
 		var s = stream.streamsToUpdate[i];
 		s.value = s.newValue;
