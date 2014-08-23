@@ -146,17 +146,19 @@ Stream.prototype.set = function(value) {
 
 test.Stream.set = function(done) {
 	var s = stream();
-	var s2 = s.set(123);
+	var s2 = s.set(1);
 	assert(s === s2, 'stream.set() should return the stream itself');
 	assert(contains(stream.streamsToUpdate, s));
 	assert(s.value === undefined, 'stream.value should be undefined before tick()');
 	stream.tick();
 	assert(!contains(stream.streamsToUpdate, s), 'tick should clear stream.streamsToUpdate');
-	assert(s.value === 123, 'stream.value should be set after tick()');
+	assert(s.value === 1, 'stream.value should be set after tick()');
 
+	s.set(2);
 	setTimeout(function() {
+		assert(s.value === 2);
 		done();
-	}, 300);
+	}, 1);
 };
 
 stream.tick = function() {
