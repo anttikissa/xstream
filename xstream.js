@@ -9,16 +9,23 @@
 // Chapter 9 - Utilities (stream.util)
 // Chapter 10 - Misc development/debug stuff (speedTest?)
 
+//
 // Chapter 1 - Internal utilities
-
+//
 function plus(x, y) { return x + y; }
 function inc(x) { return x + 1; }
+function nop() {}
 
 function contains(array, object) { return array.indexOf(object) !== -1; }
 
 // Make a shallow copy of an array or an array-like object.
 function copyArray(args) {
 	return Array.prototype.slice.apply(args);
+}
+
+// Has stream been updated during this tick?
+function hasNewValue(s) {
+	return s.hasOwnProperty('newValue');
 }
 
 // Implementation of 'defer' using process.nextTick()
@@ -54,7 +61,7 @@ var defer = typeof process !== 'undefined' && process.nextTick
 
 // Terminate the process.  For tests.
 function terminate() {
-	process.exit(0);
+	process.exit(1);
 }
 
 // Assert that 'what' is truthy.
@@ -93,18 +100,36 @@ function log() {
 // For testing; will capture log output for 'expect' to verify
 var consoleOutput = [];
 
+// For testing: a recursive collection of functions that constitute a
+// test suite.  See the end of file for details.
 test = {};
 
-// Chapter 2
+//
+// Chapter 2 - Stream() and stream()
+//
 function Stream(value) {
 	this.value = value;
+	this.listeners = [];
+	this.id = Stream.nextId++;
 }
 
+Stream.nextId = 1;
+
 test.Stream = function() {
-	assert(typeof new Stream() === 'object');
-	assert(new Stream() instanceof Stream);
-	assert(new Stream().value === undefined);
+	var s = new Stream();
+	// Stream is an object.
+	assert(typeof s === 'object');
+	assert(s instanceof Stream);
+	assert(s.value === undefined);
+	assert(s.listeners.length === 0);
+
 	assert(new Stream(123).value === 123);
+
+	// Streams have a numeric .id that autoincrements:
+	var firstId = (new Stream()).id;
+	assert(typeof firstId === 'number');
+	var nextId = (new Stream()).id;
+	assert(typeof nextId === 'number');
 };
 
 function stream(value) {
@@ -113,31 +138,17 @@ function stream(value) {
 
 module.exports = stream;
 
-stream.streamsToUpdate = [];
-
 test.stream = function() {
-	assert(typeof stream === 'function');
+	// stream() is actually new Stream().
 	assert(stream() instanceof Stream);
+
+	// that also applies to new Stream(value);
+	assert(stream(123).value === 123);
 };
 
-// Log output and save it to consoleOutput.  When testing.
-// In production, this will just be console.log.
-stream.log = function() {
-	function format(it) {
-		if (typeof it === 'string' || typeof it === 'number')
-			return String(it);
-		else
-			return require('util').inspect(it);
-	}
-	var str = copyArray(arguments).map(format).join(' ');
-	consoleOutput.push(str);
-	console.log(str); 
-}
-
-test.stream.log = function() {
-	stream.log('hello');
-	expect('hello');
-};
+//
+// Chapter 3 - Stream general methods
+// 
 
 Stream.prototype.set = function(value) {
 	stream.streamsToUpdate.push(this);
@@ -164,6 +175,77 @@ test.Stream.set = function(done) {
 	});
 };
 
+Stream.prototype.broadcast = function() {
+	for (var i = 0, len = this.listeners.length; i < len; i++) {
+		this.listeners[i].call(this, this.value);
+	}
+};
+
+test.Stream.broadcast = function() {
+	var s = stream(123);
+	s.forEach(function(value) {
+		stream.log('first', value);
+	}).forEach(function(value) {
+		stream.log('second', value);
+	});
+
+	s.broadcast();
+	expect('first 123');
+	expect('second 123');
+};
+
+Stream.prototype.forEach = function(listener) {
+	this.listeners.push(listener);
+	return this;
+};
+
+test.Stream.forEach = function() {
+	var s = stream();
+	assert(s === s.forEach(nop), '.forEach should return the stream itself');
+	s.forEach(function(value) {
+		assert(this === s, 'listener should receive the stream in "this"');
+		stream.log('s', value);
+	});
+	s.set(1);
+	stream.tick();
+	expect('s 1');
+
+	stream(123).forEach(function() {
+		assert(false, '.forEach functions should not be called without .set()');
+	});
+};
+
+//
+// Chapter 4 - Stream operators
+//
+
+// TODO
+
+//
+// Chapter 5 - stream general functions
+// 
+
+// Log output and save it to consoleOutput.  When testing.
+// In production, this will just be console.log.
+stream.log = function() {
+	function format(it) {
+		if (typeof it === 'string' || typeof it === 'number')
+			return String(it);
+		else
+			return require('util').inspect(it);
+	}
+	var str = copyArray(arguments).map(format).join(' ');
+	consoleOutput.push(str);
+	console.log(str); 
+};
+
+test.stream.log = function() {
+	stream.log('hello');
+	expect('hello');
+	stream.log(123, [2,3,4], { x: 'foo', 'y z': 'bar' });
+	expect("123 [ 2, 3, 4 ] { x: 'foo', 'y z': 'bar' }");
+};
+
 // Schedule a tick, if one is not already scheduled.
 stream.ensureDeferredTick = function() {
 	if (!stream.cancelDeferredTick) {
@@ -178,7 +260,12 @@ test.stream.ensureDeferredTick = function() {
 	// Can be called twice, though this doesn't check for its semantics
 	stream.ensureDeferredTick();
 	assert(typeof stream.cancelDeferredTick === 'function');
+	// Clean up, test framework will yell otherwise.
+	stream.tick();
+	assert(typeof stream.cancelDeferredTick === 'undefined');
 };
+
+stream.streamsToUpdate = [];
 
 stream.tick = function() {
 	if (stream.cancelDeferredTick) {
@@ -186,12 +273,21 @@ stream.tick = function() {
 		delete stream.cancelDeferredTick;
 	}
 
+	var updated = {};
+
 	for (var i = 0, len = stream.streamsToUpdate.length; i < len; i++) {
 		var s = stream.streamsToUpdate[i];
-		s.value = s.newValue;
-		delete s.newValue;
+		if (hasNewValue(s)) {
+			updated[s.id] = s;
+			s.value = s.newValue;
+			delete s.newValue;
+		}
 	}
 
+	for (var id in updated) {
+		updated[id].broadcast();
+	}
+	
 	stream.streamsToUpdate = [];
 };
 
@@ -199,6 +295,18 @@ test.stream.tick = function() {
 	stream.tick();
 };
 
+//
+// Chapter 8 - Generators
+//
+
+stream.fromArray = function() {
+	var result = stream();
+	return result;
+};
+
+//
+// Chapter 10 - Test machinery
+//
 var tests = [];
 
 function collectTests(object, parentName, parentIdx) {
@@ -229,6 +337,7 @@ function testAll() {
 		var title = nextTest[0], f = nextTest[1];
 
 		function done() {
+			assert(!stream.cancelDeferredTick, 'test functions should not leave deferred .tick()s behind');
 			expectNoOutput();
 			runTest();
 		}
