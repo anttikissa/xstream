@@ -461,13 +461,30 @@ UpdateAction.prototype.toString = UpdateAction.prototype.inspect =
 //
 // Useful for generators and for 'kickstarting' combined streams.
 //
-// TODO kill 'pull' and replace it with this
-//
 // Return this.
 Stream.prototype.update = function() {
 	stream.scheduleUpdate(new UpdateAction(this));
 	return this;
-}
+};
+
+// Stream.pull() -> Stream: Update my value from my parent(s), immediately.
+//
+// `pull` is not an action and thus doesn't cause a tick to be scheduled.
+//
+// Return this.
+Stream.prototype.pull = function() {
+
+	// TODO repeats code from tick().
+	if (this.parents.some(hasValue)) {
+		this.updater.apply(this, this.parents);
+	}
+	if (hasNewValue(this)) {
+		this.value = this.newValue;
+		delete this.newValue;
+	}
+
+	return this;
+};
 
 // Stream.end() -> Stream: End this stream.
 //
@@ -674,7 +691,7 @@ function mapUpdater(parent) {
 // TODO if .combine() should pull its value, .map() should, too.
 // Perhaps .filter() as well.
 Stream.prototype.map = function(f) {
-	return stream().link(this, mapUpdater, f).linkEnds(this);
+	return stream().link(this, mapUpdater, f).linkEnds(this).pull();
 };
 
 // Updater function for Stream.filter().
