@@ -12,10 +12,12 @@
 	console.log(s.value); // -> 1
 	console.log(s2.value); // -> 2
 
-Unless it is updated. But this is wrong. `update` should not even exist,
-I think.
+Unless it is updated. But this is wrong. TODO `update` should not even exist,
+I think. At least not for others than generators.
 
 	var s = stream(1).tick();
 	var s2 = s.map(stream.util.inc).log();
 	s2.update();
 	stream.tick(); // -> 2
+
+
