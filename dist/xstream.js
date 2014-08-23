@@ -19,6 +19,7 @@ function inc(x) { return x + 1; }
 function nop() {}
 
 function contains(array, object) { return array.indexOf(object) !== -1; }
+function remove(array, object) { array.splice(array.indexOf(object), 1); }
 
 // Make a shallow copy of an array or an array-like object.
 function copyArray(args) {
@@ -98,7 +99,7 @@ function expect(string) {
 
 function expectNoOutput() {
 	assert(consoleOutput.length === 0, 'expected no output, got "' +
-		consoleOutput[0], true);
+		consoleOutput[0] + '"', true);
 }
 
 // Actually just log output
@@ -221,6 +222,31 @@ test.Stream.forEach = function() {
 	stream(123).forEach(function() {
 		assert(false, '.forEach functions should not be called without .set()');
 	});
+};
+
+// Stream.log() -> Stream: Log my values.
+// Stream.log(String prefix) -> Stream: Log my values, predeced by 'prefix'.
+//
+// Return this.
+Stream.prototype.log = function(prefix) {
+	return this.forEach(prefix ? function(value) {
+		stream.log(prefix, value);
+	} : function(value) {
+		stream.log(value);
+	});
+}
+
+test.Stream.log = function() {
+	var s = stream().set(1);
+	s.log();
+	stream.tick();
+	expect('1');
+
+	s.log('prefix');
+	s.set(2);
+	stream.tick();
+	expect('2; prefix 2');
+
 };
 
 //
@@ -348,11 +374,72 @@ test.stream.tick = function() {
 // Chapter 8 - Generators
 //
 
-stream.fromArray = function() {
+stream.fromArray = function(array) {
 	var result = stream();
+	result.state = array;
+	result.update = function() {
+		var next = this.state.shift();
+		if (next !== undefined) {
+			this.set(next);
+		} else {
+			// TODO fiction
+//			this.end();
+		}
+	};
+
+	result.stop = function() {
+		// In effect, cancels a pending .set() if there is one.
+		// The stream will still be in stream.streamsToUpdate queue,
+		// but without this.newValue it will be harmless.
+		if (hasNewValue(this)) {
+			this.state.unshift(this.newValue);
+			delete this.newValue;
+		}
+	};
+
+	result.play = function() {
+		this.update();
+	};
+
+	result.update();
+	result.forEach(result.update);
 	return result;
 };
 
+test.stream.fromArray = function() {
+	stream.fromArray([1, 2, 3, 4]).log();
+	stream.tick(5);
+	expect('1; 2; 3; 4');
+};
+
+test.stream.fromArray.stop = function() {
+	var s = stream.fromArray([1, 2, 3, 4, 5]).log();
+	s.forEach(function(value) {
+		if (value === 3) {
+			s.stop();
+		}
+	});
+	stream.tick(5);
+	expect('1; 2; 3');
+};
+
+test.stream.fromArray.play = function() {
+	var s = stream.fromArray([1, 2, 3, 4, 5]).log();
+	s.forEach(function(value) {
+		if (value == 4) {
+			this.stop();
+		}
+	});
+	stream.tick(2);
+	expect('1; 2');
+	s.stop();
+	s.play();
+	stream.tick(5);
+	expect('3; 4');
+	s.play();
+	stream.tick();
+	expect('5');
+};
 
 //
 // Chapter 10 - Test machinery
