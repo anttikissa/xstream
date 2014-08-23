@@ -3,3 +3,19 @@
 	console.log(stream(1).tick().map(stream.util.inc).value);
 	// -> 2
 
+`.map()` should not broadcast the initial value:
+
+	var s = stream(1).tick();
+	var s2 = s.map(stream.util.inc).forEach(function() {
+		throw new Error('should not be called');
+	});
+	console.log(s.value); // -> 1
+	console.log(s2.value); // -> 2
+
+Unless it is updated. But this is wrong. `update` should not even exist,
+I think.
+
+	var s = stream(1).tick();
+	var s2 = s.map(stream.util.inc).log();
+	s2.update();
+	stream.tick(); // -> 2
