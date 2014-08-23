@@ -1,6 +1,16 @@
 
 # TODO (because this still is mostly for myself)
 
+Ugh.:
+
+.reduce() should broadcast the initial value immediately (if it has one)
+
+.map() should pull the value of its parent immediately, but be silent
+about it.
+
+console.log(stream(1).tick().map(plus).value); // -> 2
+
+
 The difference between combine() and merge();
 
 combine(), like map(), should use mostRecentValue(parent) to get its
