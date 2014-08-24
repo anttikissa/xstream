@@ -246,6 +246,21 @@ test.stream = function() {
 // Chapter 3 - Stream general methods
 // 
 
+Stream.prototype.withState = function(state) {
+	this.state = state;
+	return this;
+};
+
+test.Stream.withState = function() {
+	var s = stream();
+	assert.type(s.state, 'undefined');
+
+	var s2 = s.withState({ x: 1 });
+	assert.eq(s2, s);
+	assert.type(s.state, 'object');
+	assert.eq(s.state.x, 1);
+};
+
 Stream.prototype.set = function(value) {
 	stream.streamsToUpdate.push(this);
 	this.newValue = value;
@@ -580,6 +595,28 @@ test.Stream.uniq = function() {
 	stream.tick();
 	// nor does it do a deep compare
 	expect('[ 1, 2 ]; [ 1, 2 ]');
+};
+
+Stream.prototype.take = function(n) {
+	function takeUpdate(value) {
+		if (this.state-- <= 0) {
+			return;
+//			return this.end();
+		}
+		this.newValue = value;
+	}
+
+	// Can't call .pull() because .update() will modify this
+	// stream's state. Should maybe separate the check and the take
+	// into different functions, like generators (will) do.
+	return stream().withState(n).link(this, takeUpdate);
+};
+
+test.Stream.take = function() {
+//	assert.eq(stream(123).take(5).value, 123, 'take() should pull');
+//	assert.eq(stream(123).take(0).value, 123, 'even when n == 0');
+
+	var s = stream();
 };
 
 //
