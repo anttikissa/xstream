@@ -113,10 +113,35 @@ function assert(what, message, skipFrame) {
 	}
 }
 
-assert.eq = function(actual, expected) {
+assert.eq = function(actual, expected, message) {
+	message = message ? (': ' + message) : '';
 	if (actual !== expected) {
-		var e = new Error('assert failed: expected ' + expected +
+		var e = new Error('assert failed' + message + ': expected ' + expected +
 			', got ' + actual);
+		e.skipLines = 2;
+		throw e;
+	}
+};
+
+assert.type = function(actual, expected, message) {
+	var actualMessage;
+	var message = message ? (': ' + message) : '';
+	if (typeof expected === 'string') {
+		if (typeof actual !== expected) {
+			actualMessage = 'assert failed' + message +
+				': expected type to be ' + expected +
+				', was ' + typeof actual;
+		}
+	}
+	if (typeof expected === 'function') {
+		if (!(actual instanceof expected)) {
+			actualMessage = 'assert failed' + message +
+				': expected ' + actual +
+				' to be instanceof ' + expected.name;
+		}
+	}
+	if (actualMessage) {
+		var e = new Error(actualMessage);
 		e.skipLines = 2;
 		throw e;
 	}
@@ -183,20 +208,20 @@ Stream.nextId = 1;
 test.Stream = function() {
 	var s = new Stream();
 	// Stream is an object.
-	assert(typeof s === 'object');
-	assert(s instanceof Stream);
-	assert(s.value === undefined);
-	assert(s.listeners.length === 0);
-	assert(s.children.length === 0);
-	assert(s.parents.length === 0);
+	assert.type(s, 'object');
+	assert.type(s, Stream);
+	assert.eq(s.value, undefined);
+	assert.eq(s.listeners.length, 0);
+	assert.eq(s.children.length, 0);
+	assert.eq(s.parents.length, 0);
 
-	assert(new Stream(123).value === 123);
+	assert.eq(new Stream(123).value, 123);
 
 	// Streams have a numeric .id that autoincrements:
 	var firstId = (new Stream()).id;
-	assert(typeof firstId === 'number');
+	assert.type(firstId, 'number');
 	var nextId = (new Stream()).id;
-	assert(typeof nextId === 'number');
+	assert.type(nextId, 'number');
 };
 
 function stream(value) {
@@ -210,7 +235,7 @@ test.stream = function() {
 	assert(stream() instanceof Stream);
 
 	// that also applies to new Stream(value);
-	assert(stream(123).value === 123);
+	assert.eq(stream(123).value, 123);
 };
 
 //
@@ -227,17 +252,17 @@ Stream.prototype.set = function(value) {
 test.Stream.set = function(done) {
 	var s = stream();
 	var s2 = s.set(1);
-	assert(s === s2, 'stream.set() should return the stream itself');
+	assert.eq(s, s2, 'stream.set() should return the stream itself');
 	assert(contains(stream.streamsToUpdate, s));
-	assert(s.value === undefined, 'stream.value should be undefined before tick()');
+	assert.eq(s.value, undefined, 'stream.value should be undefined before tick()');
 	stream.tick();
 	assert(!contains(stream.streamsToUpdate, s), 'tick should clear stream.streamsToUpdate');
-	assert(s.value === 1, 'stream.value should be set after tick()');
+	assert.eq(s.value, 1, 'stream.value should be set after tick()');
 
 	s.set(2);
-	assert(s.value === 1, 's.set() should not set the value immediately');
+	assert.eq(s.value, 1, 's.set() should not set the value immediately');
 	defer(function() {
-		assert(s.value === 2, 's.set() should set the value after the next tick');
+		assert.eq(s.value, 2, 's.set() should set the value after the next tick');
 		done();
 	});
 };
@@ -267,9 +292,9 @@ Stream.prototype.forEach = function(listener) {
 
 test.Stream.forEach = function() {
 	var s = stream();
-	assert(s === s.forEach(nop), '.forEach should return the stream itself');
+	assert.eq(s, s.forEach(nop), '.forEach should return the stream itself');
 	s.forEach(function(value) {
-		assert(this === s, 'listener should receive the stream in "this"');
+		assert.eq(this, s, 'listener should receive the stream in "this"');
 		stream.log('s', value);
 	});
 	s.set(1);
@@ -303,11 +328,11 @@ test.Stream.pull = function() {
 		this.newValue = valueOf(parent);
 	};
 
-	assert(child.value === undefined, "child shouldn't get a value automatically");
+	assert.eq(child.value, undefined, "child shouldn't get a value automatically");
 	stream.tick();
-	assert(child.value === undefined, "not even if stream.tick() happens");
+	assert.eq(child.value, undefined, "not even if stream.tick() happens");
 	child.pull();
-	assert(child.value === 123, "when it a child calls .pull(), it finally gets one");
+	assert.eq(child.value, 123, "when it a child calls .pull(), it finally gets one");
 
 	// Start again, this time with a valueless parent.
 	parent = stream();
@@ -326,15 +351,15 @@ Stream.prototype.addChild = function(child) {
 
 test.Stream.addChild = function() {
 	var parent = stream();
-	assert(parent.children.length === 0);
+	assert.eq(parent.children.length, 0);
 	var child = stream();
 	parent.addChild(child);
-	assert(parent.children.length === 1);
-	assert(parent.children[0] === child);
+	assert.eq(parent.children.length, 1);
+	assert.eq(parent.children[0], child);
 
 	// It's ok to call addChild() twice with the same child.
 	parent.addChild(child);
-	assert(parent.children.length === 2);
+	assert.eq(parent.children.length, 2);
 };
 
 Stream.prototype.removeChild = function(child) {
@@ -348,11 +373,11 @@ test.Stream.removeChild = function() {
 	parent.addChild(child);
 	parent.addChild(stream());
 
-	assert(parent.children.length === 3);
+	assert.eq(parent.children.length, 3);
 	assert(contains(parent.children, child));
 	parent.removeChild(child);
 	// Removing reduces child count with 1
-	assert(parent.children.length === 2);
+	assert.eq(parent.children.length, 2);
 	// And the child is no longer in parent's children
 	assert(!contains(parent.children, child));
 
@@ -361,12 +386,12 @@ test.Stream.removeChild = function() {
 	parent.addChild(stream());
 	parent.addChild(child);
 	parent.addChild(stream());
-	assert(parent.children.length === 7);
+	assert.eq(parent.children.length, 7);
 
 	// Children can be added multiple times to the same parent, and 
 	// .removeChild() only removes one instance at a time.
 	parent.removeChild(child);
-	assert(parent.children.length === 6);
+	assert.eq(parent.children.length, 6);
 	assert(contains(parent.children, child));
 
 	parent.removeChild(child);
@@ -431,7 +456,7 @@ test.Stream.map = function() {
 
 	var s4 = stream(1);
 	var s5 = s4.map(inc);
-	assert(s5.value === 2, 'if parent has a value, map() should pull it immediately');
+	assert.eq(s5.value, 2, 'if parent has a value, map() should pull it immediately');
 
 	var s6 = stream();
 	var s7 = s6.map(function() {
@@ -499,15 +524,13 @@ stream.ensureDeferredTick = function() {
 };
 
 test.stream.ensureDeferredTick = function() {
-	assert(typeof stream.cancelDeferredTick === 'undefined');
+	assert.type(stream.cancelDeferredTick, 'undefined', 'there should be no deferred tick scheduled at the beginning of a test');
 	stream.ensureDeferredTick();
-	assert(typeof stream.cancelDeferredTick === 'function');
-	// Can be called twice, though this doesn't check for its semantics
+	assert.type(stream.cancelDeferredTick, 'function', 'ensureDeferredTick() should schedule a tick');
 	stream.ensureDeferredTick();
-	assert(typeof stream.cancelDeferredTick === 'function');
-	// Clean up, test framework will yell otherwise.
+	assert.type(stream.cancelDeferredTick, 'function', 'even when called twice, although this does not test its semantics');
 	stream.tick();
-	assert(typeof stream.cancelDeferredTick === 'undefined');
+	assert.type(stream.cancelDeferredTick, 'undefined', 'there is no scheduled tick at the end of the tick, since the test framework would yell otherwise');
 };
 
 stream.streamsToUpdate = [];
@@ -632,9 +655,9 @@ test.stream.tick = function() {
 	s.forEach(inc);
 	s.set(0);
 	stream.tick();
-	assert(s.value === 0);
+	assert.eq(s.value, 0);
 	stream.tick();
-	assert(s.value === 1);
+	assert.eq(s.value, 1);
 
 	// A crude way to stop the stream from ticking.
 	// TODO when there's .stop(), use that.
@@ -644,10 +667,10 @@ test.stream.tick = function() {
 	s.set(0);
 	s.forEach(inc);
 	stream.tick();
-	assert(s.value === 0);
+	assert.eq(s.value, 0);
 	// Now call it 5 times.
 	stream.tick(5);
-	assert(s.value === 5);
+	assert.eq(s.value, 5);
 
 	// A crude way to stop the stream from ticking.
 	// TODO when there's .stop(), use that.
@@ -767,9 +790,9 @@ function testAll() {
 		var title = nextTest[0], f = nextTest[1];
 
 		function done() {
-			assert(!stream.cancelDeferredTick, 'test functions should not leave deferred .tick()s behind');
+			assert.type(stream.cancelDeferredTick, 'undefined', 'test functions should not leave deferred .tick()s behind');
 			expectNoOutput();
-			runTest();
+			defer(runTest);
 		}
 
 		try {

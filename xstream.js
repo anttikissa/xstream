@@ -121,6 +121,30 @@ assert.eq = function(actual, expected, message) {
 	}
 };
 
+assert.type = function(actual, expected, message) {
+	var actualMessage;
+	var message = message ? (': ' + message) : '';
+	if (typeof expected === 'string') {
+		if (typeof actual !== expected) {
+			actualMessage = 'assert failed' + message +
+				': expected type to be ' + expected +
+				', was ' + typeof actual;
+		}
+	}
+	if (typeof expected === 'function') {
+		if (!(actual instanceof expected)) {
+			actualMessage = 'assert failed' + message +
+				': expected ' + actual +
+				' to be instanceof ' + expected.name;
+		}
+	}
+	if (actualMessage) {
+		var e = new Error(actualMessage);
+		e.skipLines = 2;
+		throw e;
+	}
+};
+
 assert.throws = function(f) {
 	try {
 		f();
@@ -144,8 +168,8 @@ function expect(string) {
 	for (var i = 0; i < strings.length; i++) {
 		var expected = strings[i];
 		var actual = consoleOutput.shift();
-		assert.eq(typeof actual, 'string', 'expected "' + expected + '", got no output', true);
-		assert.eq(actual, expected, 'expected "' + expected + '", got "' + actual + '"', true);
+		assert(typeof actual === 'string', 'expected "' + expected + '", got no output', true);
+		assert(actual === expected, 'expected "' + expected + '", got "' + actual + '"', true);
 	}
 }
 
@@ -182,8 +206,8 @@ Stream.nextId = 1;
 test.Stream = function() {
 	var s = new Stream();
 	// Stream is an object.
-	assert.eq(typeof s, 'object');
-	assert(s instanceof Stream);
+	assert.type(s, 'object');
+	assert.type(s, Stream);
 	assert.eq(s.value, undefined);
 	assert.eq(s.listeners.length, 0);
 	assert.eq(s.children.length, 0);
@@ -193,9 +217,9 @@ test.Stream = function() {
 
 	// Streams have a numeric .id that autoincrements:
 	var firstId = (new Stream()).id;
-	assert.eq(typeof firstId, 'number');
+	assert.type(firstId, 'number');
 	var nextId = (new Stream()).id;
-	assert.eq(typeof nextId, 'number');
+	assert.type(nextId, 'number');
 };
 
 function stream(value) {
@@ -498,15 +522,13 @@ stream.ensureDeferredTick = function() {
 };
 
 test.stream.ensureDeferredTick = function() {
-	assert.eq(typeof stream.cancelDeferredTick, 'undefined');
+	assert.type(stream.cancelDeferredTick, 'undefined', 'there should be no deferred tick scheduled at the beginning of a test');
 	stream.ensureDeferredTick();
-	assert.eq(typeof stream.cancelDeferredTick, 'function');
-	// Can be called twice, though this doesn't check for its semantics
+	assert.type(stream.cancelDeferredTick, 'function', 'ensureDeferredTick() should schedule a tick');
 	stream.ensureDeferredTick();
-	assert.eq(typeof stream.cancelDeferredTick, 'function');
-	// Clean up, test framework will yell otherwise.
+	assert.type(stream.cancelDeferredTick, 'function', 'even when called twice, although this does not test its semantics');
 	stream.tick();
-	assert.eq(typeof stream.cancelDeferredTick, 'undefined');
+	assert.type(stream.cancelDeferredTick, 'undefined', 'there is no scheduled tick at the end of the tick, since the test framework would yell otherwise');
 };
 
 stream.streamsToUpdate = [];
@@ -766,9 +788,9 @@ function testAll() {
 		var title = nextTest[0], f = nextTest[1];
 
 		function done() {
-			assert(!stream.cancelDeferredTick, 'test functions should not leave deferred .tick()s behind');
+			assert.type(stream.cancelDeferredTick, 'undefined', 'test functions should not leave deferred .tick()s behind');
 			expectNoOutput();
-			runTest();
+			defer(runTest);
 		}
 
 		try {
