@@ -636,6 +636,9 @@ test.Stream.take = function() {
 //	assert.eq(stream(123).take(0).value, 123, 'even when n == 0');
 
 	var s = stream();
+	s.take(3).log();
+	s.set(1).tick().set(2).tick().set(3).tick().set(4).tick().set(5).tick();
+	expect('1; 2; 3');
 };
 
 //
