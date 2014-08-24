@@ -286,6 +286,25 @@ test.Stream.set = function(done) {
 	});
 };
 
+Stream.prototype.tick = function(n) {
+	stream.tick(n);
+	return this;
+};
+
+test.Stream.tick = function() {
+	var oldTick = stream.tick;
+	var got;
+	stream.tick = function(value) {
+		got = value;
+	};
+	var s = stream();
+	var s2 = s.tick(10);
+	stream.tick = oldTick;
+	assert.eq(got, 10, 'Stream.tick() delegate its argument to stream.tick().');
+	assert.eq(s, s2, 'Stream.tick() should return "this".');
+};
+
+
 Stream.prototype.broadcast = function() {
 	for (var i = 0, len = this.listeners.length; i < len; i++) {
 		this.listeners[i].call(this, this.value);
