@@ -14,10 +14,17 @@
 //
 function plus(x, y) { return x + y; }
 function inc(x) { return x + 1; }
+function isEven(x) { return !(x % 2); }
+function isOdd(x) { return x % 2; }
+
 function nop() {}
 
 function contains(array, object) { return array.indexOf(object) !== -1; }
-function remove(array, object) { array.splice(array.indexOf(object), 1); }
+// Remove element from array (in-place)
+function remove(array, object) {
+	assert(contains(array, object));
+	array.splice(array.indexOf(object), 1);
+}
 
 // Find first element in array that satisfies test(element), or undefined
 function find(array, test) {
@@ -287,6 +294,67 @@ test.Stream.pull = function() {
 	child.pull();
 };
 
+Stream.prototype.addChild = function(child) {
+	this.children.push(child);
+}
+
+test.Stream.addChild = function() {
+	var parent = stream();
+	assert(parent.children.length === 0);
+	var child = stream();
+	parent.addChild(child);
+	assert(parent.children.length === 1);
+	assert(parent.children[0] === child);
+
+	// It's ok to call addChild() twice with the same child.
+	parent.addChild(child);
+	assert(parent.children.length === 2);
+};
+
+Stream.prototype.removeChild = function(child) {
+	remove(this.children, child);
+}
+
+test.Stream.removeChild = function() {
+	var parent = stream();
+	var child = stream();
+	parent.addChild(stream());
+	parent.addChild(child);
+	parent.addChild(stream());
+
+	assert(parent.children.length === 3);
+	assert(contains(parent.children, child));
+	parent.removeChild(child);
+	// Removing reduces child count with 1
+	assert(parent.children.length === 2);
+	// And the child is no longer in parent's children
+	assert(!contains(parent.children, child));
+
+	parent.addChild(stream());
+	parent.addChild(child);
+	parent.addChild(stream());
+	parent.addChild(child);
+	parent.addChild(stream());
+	assert(parent.children.length === 7);
+
+	// Children can be added multiple times to the same parent, and 
+	// .removeChild() only removes one instance at a time.
+	parent.removeChild(child);
+	assert(parent.children.length === 6);
+	assert(contains(parent.children, child));
+
+	parent.removeChild(child);
+	assert(parent.children.length === 5);
+	assert(!contains(parent.children, child));
+
+	try {
+		parent.removeChild(child);
+	} catch (e) {
+		var caught = true;
+	}
+	assert(caught);
+};
+
 // Stream.log() -> Stream: Log my values.
 // Stream.log(String prefix) -> Stream: Log my values, predeced by 'prefix'.
 //
@@ -346,6 +414,33 @@ test.Stream.map = function() {
 	var s7 = s6.map(function() {
 		throw new Error("map() shouldn't try to pull its value if parent doesn't have it");
 	});
+};
+
+Stream.prototype.filter = function(f) {
+	var result = stream();
+	result.f = f;
+	result.update = function(parent) {
+		var value = valueOf(parent);
+		if (this.f(value)) {
+			this.newValue = value;
+		}
+	};
+	result.parents = [this];
+	this.children.push(result);
+	result.pull();
+
+	return result;
+};
+
+test.Stream.filter = function() {
+	var s = stream();
+	s.filter(isOdd).log();
+	s.set(1); stream.tick();
+	s.set(2); stream.tick();
+	s.set(3); stream.tick();
+	s.set(4); stream.tick();
+	s.set(5); stream.tick();
+	expect('1; 3; 5');
 };
 
 //
@@ -632,9 +727,17 @@ function collectTests(object, parentName, parentIdx) {
 function testAll() {
 	collectTests(test);
 
+	var count = tests.length;
+	var start = Date.now();
+	function finished() {
+		var end = Date.now();
+		log('Running', count, 'tests took', (end - start), 'ms');
+	}
+
 	function runTest() {
 		var nextTest = tests.shift();
 		if (!nextTest) {
+			finished();
 			return;
 		}
 
