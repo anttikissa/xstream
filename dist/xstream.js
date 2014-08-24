@@ -535,7 +535,6 @@ test.stream.ensureDeferredTick = function() {
 
 stream.streamsToUpdate = [];
 
-
 // updateOrder(Stream[] streams)
 // Given an array of streams to update, create a graph of those streams
 // and their dependencies and return a topological ordering of that graph
@@ -685,7 +684,7 @@ test.stream.tick = function() {
 stream.fromArray = function(array) {
 	var result = stream();
 	result.state = array;
-	result.update = function() {
+	result.next = function() {
 		var next = this.state.shift();
 		if (next !== undefined) {
 			this.set(next);
@@ -695,22 +694,32 @@ stream.fromArray = function(array) {
 		}
 	};
 
+	// Cancel out the previous state change.
+	// Used to implement .stop().
+	//
+	// Given that 'value' is the previous value yielded by .next();,
+	// this method should modify .state so that the next value yielded 
+	// will be 'value'.  It should not touch other members.
+	result.undo = function(value) {
+		this.state.unshift(value);
+	};
+
 	result.stop = function() {
 		// In effect, cancels a pending .set() if there is one.
 		// The stream will still be in stream.streamsToUpdate queue,
 		// but without this.newValue it will be harmless.
 		if (hasNewValue(this)) {
-			this.state.unshift(this.newValue);
+			this.undo(this.newValue);
 			delete this.newValue;
 		}
 	};
 
 	result.play = function() {
-		this.update();
+		this.next();
 	};
 
-	result.update();
-	result.forEach(result.update);
+	result.next();
+	result.forEach(result.next);
 	return result;
 };
 
