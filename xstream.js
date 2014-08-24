@@ -111,8 +111,14 @@ function assert(what, message, skipFrame) {
 	}
 }
 
+// assert that actual equals expected.
+// checks also for NaN.
 assert.eq = function(actual, expected, message) {
 	message = message ? (': ' + message) : '';
+	if (actual !== actual && expected !== expected) {
+		return; // assert.eq(NaN, NaN) -> ok
+	}
+
 	if (actual !== expected) {
 		var e = new Error('assert failed' + message + ': expected ' + expected +
 			', got ' + actual);
@@ -307,7 +313,7 @@ test.Stream.forEach = function() {
 Stream.prototype.pull = function() {
 	// TODO repeats code from tick().
 	if (this.parents.some(hasValue)) {
-		this.update.apply(this, this.parents);
+		this.update.apply(this, this.parents.map(valueOf));
 	}
 	if (hasNewValue(this)) {
 		this.value = this.newValue;
@@ -322,8 +328,8 @@ test.Stream.pull = function() {
 	var child = stream();
 	child.parents = [parent];
 	parent.children = [child];
-	child.update = function(parent) {
-		this.newValue = valueOf(parent);
+	child.update = function(value) {
+		this.newValue = value;
 	};
 
 	assert.eq(child.value, undefined, "child shouldn't get a value automatically");
@@ -401,6 +407,55 @@ test.Stream.removeChild = function() {
 	});
 };
 
+// Stream.link(Stream parent, Function updater, Function f = null) -> Stream
+// Stream.link(Stream[] parents, Function updater, Function f = null) -> Stream
+//
+// Make this stream dependent of 'parents' through 'update' which
+// (optionally) calls 'f'.
+Stream.prototype.link = function(parents, update, f) {
+	assert(this.parents.length === 0);
+
+	if (parents instanceof Stream) {
+		parents = [parents];
+	}
+
+	for (var i = 0, len = parents.length; i < len; i++) {
+		parents[i].addChild(this);
+	}
+
+	this.parents = parents;
+	this.update = update;
+	this.f = f || null;
+
+	return this;
+};
+
+test.Stream.link = function() {
+	var parent = stream().log('parent');
+	var child = stream().log('child');
+	var update = function(value) {
+		stream.log('updating');
+		this.newValue = this.f(value);
+	};
+	var result = child.link(parent, update, inc);
+	assert.eq(result, child);
+	assert(contains(parent.children, child));
+	assert(contains(child.parents, parent));
+	assert.eq(child.update, update);
+	assert.eq(child.f, inc);
+
+	assert.type(parent.value, 'undefined');
+	assert.type(child.value, 'undefined');
+	parent.set(1);
+	stream.tick();
+	assert.eq(parent.value, 1);
+	assert.eq(child.value, 2);
+	// update phase should happen first
+	expect('updating');
+	// then .forEach() handlers of both parent and child
+	expect('parent 1; child 2');
+};
+
 // Stream.log() -> Stream: Log my values.
 // Stream.log(String prefix) -> Stream: Log my values, predeced by 'prefix'.
 //
@@ -431,17 +486,12 @@ test.Stream.log = function() {
 //
 
 Stream.prototype.map = function(f) {
-	var result = stream();
-	result.f = f;
-	result.update = function(parent) {
-		this.newValue = this.f(valueOf(parent));
-	};
-	result.parents = [this];
-	this.children.push(result);
 
-	result.pull();
+	function mapUpdate(value) {
+		this.newValue = this.f(value);
+	}
 
-	return result;
+	return stream().link(this, mapUpdate, f).pull();
 };
 
 test.Stream.map = function() {
@@ -463,19 +513,14 @@ test.Stream.map = function() {
 };
 
 Stream.prototype.filter = function(f) {
-	var result = stream();
-	result.f = f;
-	result.update = function(parent) {
-		var value = valueOf(parent);
+
+	function filterUpdate(value) {
 		if (this.f(value)) {
 			this.newValue = value;
 		}
-	};
-	result.parents = [this];
-	this.children.push(result);
-	result.pull();
+	}
 
-	return result;
+	return stream().link(this, filterUpdate, f).pull();
 };
 
 test.Stream.filter = function() {
@@ -487,6 +532,54 @@ test.Stream.filter = function() {
 	s.set(4); stream.tick();
 	s.set(5); stream.tick();
 	expect('1; 3; 5');
+
+	var oddParent = stream(1);
+	var oddChild = oddParent.filter(isOdd);
+	assert.eq(oddChild.value, 1, 'filter should pull() its value automatically');
+
+	var evenParent = stream(2);
+	var evenChild = evenParent.filter(isOdd);
+	assert.type(evenChild.value, 'undefined', "filter should not pull() if filter doesn't match");
+};
+
+Stream.prototype.uniq = function() {
+	function uniqUpdate(value) {
+		if (this.value !== value) {
+			this.newValue = value;
+		}
+	}
+
+	return stream().link(this, uniqUpdate).pull();
+};
+
+test.Stream.uniq = function() {
+	assert.eq(stream(1).uniq().value, 1, "uniq() should pull its value immediately");
+	
+	var s1 = stream();
+	var s2 = s1.uniq().log();
+	s1.set(1);
+	stream.tick();
+	expect('1');
+	s1.set(1);
+	stream.tick();
+	expectNoOutput();
+	s1.set(2);
+	stream.tick();
+	expect('2');
+
+	s1.set(NaN);
+	stream.tick();
+	s1.set(NaN);
+	stream.tick();
+	// uniq() does not filter out duplicate NaNs, because NaN !== NaN
+	expect('NaN; NaN');
+
+	s1.set([1, 2]);
+	stream.tick();
+	s1.set([1, 2]);
+	stream.tick();
+	// nor does it do a deep compare
+	expect('[ 1, 2 ]; [ 1, 2 ]');
 };
 
 //
@@ -533,7 +626,8 @@ test.stream.ensureDeferredTick = function() {
 
 stream.streamsToUpdate = [];
 
-// updateOrder(Stream[] streams)
+// updateOrder(Stream[] streams) -> Stream[]
+// 
 // Given an array of streams to update, create a graph of those streams
 // and their dependencies and return a topological ordering of that graph
 // where parents come before their children.
@@ -543,8 +637,7 @@ stream.streamsToUpdate = [];
 // The algorithm assumes that 'nodes' only contains a single instance of
 // each stream.
 //
-// TODO clarify the order in which the updates happen.
-// Should we start updating from the nodes that come first?
+// TODO is this really such a complicated operation?
 //
 function updateOrder(nodes) {
 	parentCounts = {};
@@ -620,7 +713,7 @@ stream.tick = function(n) {
 	for (var i = 0, len = streamsToUpdate.length; i < len; i++) {
 		var s = streamsToUpdate[i];
 		if (s.parents.some(hasNewValue)) {
-			s.update.apply(s, s.parents);
+			s.update.apply(s, s.parents.map(valueOf));
 		}
 	}
 
@@ -673,6 +766,153 @@ test.stream.tick = function() {
 	// TODO when there's .stop(), use that.
 	s.listeners = [];
 	stream.tick();
+};
+
+//
+// Chapter 6 - stream combinators
+//
+
+stream.combine = function() {
+	var parents = copyArray(arguments);
+	var f = parents.pop();
+
+	function combineUpdate() {
+		this.newValue = this.f.apply(null, arguments);
+	}
+
+	return stream().link(parents, combineUpdate, f).pull();
+};
+
+test.stream.combine = function() {
+	var s1 = stream();
+	var s2 = stream();
+	var s3 = stream.combine(s1, s2, plus).log();
+	assert.type(s3.value, undefined, 'combine() should not pull if none of its parents have a value');
+
+	// set only one parent, should get a value regardless
+	s2.set(1);
+	stream.tick();
+	expect('NaN'); // adding undefined to anything does not make much sense
+
+	var s4 = stream.combine(stream(), stream(1), plus).log();
+	assert.eq(s4.value, NaN, 'combine() should pull if one of its parents has a value');
+
+	// The normal case
+	var s5 = stream.combine(stream(1), stream(2), plus);
+	assert.eq(s5.value, 3);
+
+	// combine should get its value atomically
+	var s6 = stream();
+	var s7 = stream();
+	var s8 = stream.combine(s6, s7, plus).log();
+	s6.set(1);
+	stream.tick();
+	expect('NaN');
+	s7.set(2);
+	stream.tick();
+	expect('3');
+	s6.set(3); 
+	s7.set(4);
+	stream.tick();
+	expect('7');
+};
+
+stream.combineWhenAll = function() {
+	var parents = copyArray(arguments);
+	var f = parents.pop();
+
+	function combineWhenAllUpdate() {
+		if (this.parents.every(hasValue)) {
+			this.newValue = this.f.apply(null, arguments);
+		}
+	}
+
+	return stream().link(parents, combineWhenAllUpdate, f).pull();
+};
+
+test.stream.combineWhenAll = function() {
+	var s1 = stream();
+	var s2 = stream();
+	var s3 = stream.combineWhenAll(s1, s2, plus).log();
+	assert.type(s3.value, undefined, 'combine() should not pull if none of its parents have a value');
+
+	// set only one parent, should not get a value 
+	s2.set(1);
+	stream.tick();
+	expectNoOutput();
+
+	s1.set(2);
+	stream.tick();
+	expect('3');
+
+	var s4 = stream.combineWhenAll(stream(), stream(1), plus).log();
+	assert.type(s4.value, 'undefined', 'combine() should only pull if all of its parents have a value');
+
+	// The normal case
+	var s5 = stream.combineWhenAll(stream(1), stream(2), plus);
+	assert.eq(s5.value, 3);
+
+	// combineWhenAll should get its value atomically
+	var s6 = stream();
+	var s7 = stream();
+	var s8 = stream.combineWhenAll(s6, s7, plus).log();
+	s6.set(1);
+	stream.tick();
+	expectNoOutput();
+	s7.set(2);
+	stream.tick();
+	expect('3');
+	s6.set(3); 
+	s7.set(4);
+	stream.tick();
+	expect('7');
+};
+
+// stream.merge(Stream streams...) -> Stream: Merge multiple streams.
+// 
+// Only ever sets its value when some of its parent stream updates, i.e.
+// it never pulls its value.
+stream.merge = function() {
+	var parents = copyArray(arguments);
+
+	function mergeUpdater() {
+		var parents = this.parents;
+		for (var i = 0, len = parents.length; i < len; i++) {
+			if (hasNewValue(parents[i])) {
+				this.newValue = parents[i].newValue;
+			}
+		}
+	}
+
+	return stream().link(parents, mergeUpdater);
+}
+
+test.stream.merge = function() {
+	var s1 = stream(1);
+	var s2 = stream(2);
+	var s3 = stream.merge(s1, s2).log();
+
+	assert.type(s3.value, 'undefined', 'merge() does not pull.');
+
+	s1.set(123);
+	stream.tick();
+	expect('123');
+
+	s2.set(234);
+	stream.tick();
+	expect('234');
+
+	// if two streams are updated within the same tick, too bad.
+	s1.set('a');
+	s2.set('b');
+	stream.tick();
+	expect('b');
+
+	// the later parent is picked, regardless of the order of .set()s.
+	s2.set('b');
+	s1.set('a');
+	stream.tick();
+	expect('b');
 };
 
 //
