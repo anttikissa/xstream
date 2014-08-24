@@ -698,8 +698,12 @@ stream.fromArray = function(array) {
 	// Given that 'value' is the previous value yielded by .next();,
 	// this method should modify .state so that the next value yielded 
 	// will be 'value'.  It should not touch other members.
+	//
+	// This could also be implemented by saving the previous state in
+	// .prevState(), or something. That might be a better, simpler
+	// solution.
 	result.undo = function(value) {
-		this.state.unshift(1 + value);
+		this.state.unshift(value);
 	};
 
 	result.stop = function() {
