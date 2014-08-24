@@ -111,6 +111,30 @@ function assert(what, message, skipFrame) {
 	}
 }
 
+assert.eq = function(actual, expected) {
+	if (actual !== expected) {
+		var e = new Error('assert failed: expected ' + expected +
+			', got ' + actual);
+		e.skipLines = 2;
+		throw e;
+	}
+};
+
+assert.throws = function(f) {
+	try {
+		f();
+	} catch (e) {
+		return;
+	}
+	// Boils down function body to the essential by removing end-of-line
+	// comments and extra whitespace (including newlines)
+	var functionEssence = f.toString().replace(/\/\/.*$/mg, '')
+		.replace(/\s+/g, ' ');
+	var e = new Error('assert failed: expected ' + functionEssence + ' to throw')
+	e.skipLines = 2;
+	throw e
+};
+
 function expect(string) { 
 	var strings = [string];
 	if (contains(string, '; ')) {
@@ -344,15 +368,12 @@ test.Stream.removeChild = function() {
 	assert(contains(parent.children, child));
 
 	parent.removeChild(child);
-	assert(parent.children.length === 5);
+	assert.eq(parent.children.length, 5);
 	assert(!contains(parent.children, child));
 
-	try {
+	assert.throws(function() {
 		parent.removeChild(child);
-	} catch (e) {
-		var caught = true;
-	}
-	assert(caught);
+	});
 };
 
 // Stream.log() -> Stream: Log my values.
