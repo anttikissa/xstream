@@ -20,13 +20,13 @@ function isOdd(x) { return x % 2; }
 function nop() {}
 
 function contains(array, object) { return array.indexOf(object) !== -1; }
-// Remove element from array (in-place)
+// Remove element from array (in-place).
 function remove(array, object) {
 	assert(contains(array, object));
 	array.splice(array.indexOf(object), 1);
 }
 
-// Find first element in array that satisfies test(element), or undefined
+// Find first element in array that satisfies test(element), or undefined.
 function find(array, test) {
 	for (var i = 0, len = array.length; i < len; i++) {
 		var item = array[i];
@@ -51,14 +51,14 @@ function hasNewValue(s) {
 	return s.hasOwnProperty('newValue');
 }
 
-// Return .newValue if exists, otherwise .value
+// Return .newValue if exists, otherwise .value.
 function valueOf(s) {
 	if (s.hasOwnProperty('newValue'))
 		return s.newValue;
 	return s.value;
 }
 
-// Implementation of 'defer' using process.nextTick()
+// Implementation of 'defer' using process.nextTick().
 function deferNextTick(f) {
 	var canceled = false;
 
@@ -75,7 +75,7 @@ function deferNextTick(f) {
 	};
 }
 
-// Implementation of 'defer' using setTimeout()
+// Implementation of 'defer' using setTimeout().
 function deferTimeout(f) {
 	var timeout = setTimeout(f);
 	return function() {
@@ -83,9 +83,8 @@ function deferTimeout(f) {
 	};
 }
 
-// defer(Function f) -> Function
-// Call 'f' at a later time. Return a function that can be called to
-// cancel the the deferred call.
+// defer(Function f) -> Function: Call 'f' at a later time.
+// Return a function that can be called to cancel the the deferred call.
 var defer = typeof process !== 'undefined' && process.nextTick
 	? deferNextTick : deferTimeout;
 
@@ -95,7 +94,6 @@ function terminate() {
 }
 
 // Assert that 'what' is truthy.
-// TODO strip away assertions in production build.
 function assert(what, message, skipFrame) {
 	var skipLines = skipFrame ? 3 : 2;
 	if (!what) {
@@ -111,8 +109,8 @@ function assert(what, message, skipFrame) {
 	}
 }
 
-// assert that actual equals expected.
-// checks also for NaN.
+// Assert that actual equals expected.
+// Uses strict equality, plus NaN is considered to equal NaN.
 assert.eq = function(actual, expected, message) {
 	message = message ? (': ' + message) : '';
 	if (actual !== actual && expected !== expected) {
@@ -205,6 +203,7 @@ function Stream(value) {
 	this.children = [];
 	this.parents = [];
 	this.listeners = [];
+	this.ended = false;
 }
 
 Stream.nextId = 1;
@@ -218,6 +217,8 @@ test.Stream = function() {
 	assert.eq(s.listeners.length, 0);
 	assert.eq(s.children.length, 0);
 	assert.eq(s.parents.length, 0);
+	assert.type(s.ended, 'boolean');
+	assert.eq(s.ended, false);
 
 	assert.eq(new Stream(123).value, 123);
 
@@ -262,6 +263,9 @@ test.Stream.withState = function() {
 };
 
 Stream.prototype.set = function(value) {
+	if (this.ended) {
+		throw new Error('cannot set() an ended stream');
+	}
 	stream.streamsToUpdate.push(this);
 	this.newValue = value;
 	stream.ensureDeferredTick();
@@ -303,7 +307,6 @@ test.Stream.tick = function() {
 	assert.eq(got, 10, 'Stream.tick() delegate its argument to stream.tick().');
 	assert.eq(s, s2, 'Stream.tick() should return "this".');
 };
-
 
 Stream.prototype.broadcast = function() {
 	for (var i = 0, len = this.listeners.length; i < len; i++) {
@@ -446,6 +449,15 @@ test.Stream.removeChild = function() {
 //
 // Make this stream dependent of 'parents' through 'update' which
 // (optionally) calls 'f'.
+//
+// TODO consider splitting into .link(parent) and .linkMany(parents)
+// and parameterizing them with how to link ends and errors, if deemed
+// necessary.
+//
+// Alternatively, implement different .endWhenAny() and .endWhenAll()
+// strategies and use them.
+//
+//
 Stream.prototype.link = function(parents, update, f) {
 	assert(this.parents.length === 0);
 
@@ -461,6 +473,7 @@ Stream.prototype.link = function(parents, update, f) {
 	this.update = update;
 	this.f = f || null;
 
+	this.endWhenAny(parents);
 	return this;
 };
 
@@ -488,6 +501,93 @@ test.Stream.link = function() {
 	expect('updating');
 	// then .forEach() handlers of both parent and child
 	expect('parent 1; child 2');
+};
+
+Stream.prototype.endWhenAny = function(streams) {
+	var that = this;
+	for (var i = 0, len = streams.length; i < len; i++) {
+		streams[i].ends().forEach(function() {
+			that.end();
+		});
+	}
+};
+
+test.Stream.endWhenAny = function() {
+
+};
+
+
+
+Stream.prototype.ends = function() {
+	if (!this.endStream) {
+		this.endStream = stream(); //.withState(this);;
+	}
+	return this.endStream;
+};
+
+test.Stream.ends = function() {
+	var s = stream();
+
+	// ends() creates s.endStream
+	assert.type(s.endStream, 'undefined');
+	var ends = s.ends();
+	assert.type(s.endStream, Stream);
+
+	assert.eq(s.endStream, ends);
+
+	assert.eq(ends, s.ends(), 'ends() should always return the same stream');
+};
+
+Stream.prototype.end = function() {
+	if (this.ended) {
+		throw new Error('cannot end() an ended stream');
+	}
+	this.ends().set(valueOf(this));
+	// A relatively stupid way to check that a stream is ended:
+	// it's .ended property is true
+	this.ended = true;
+};
+
+test.Stream.end = function() {
+	// end() a stream with no initial value
+	var s = stream();
+	s.ends().log('end');
+	s.end();
+	expectNoOutput();
+	s.tick();
+	expect('end undefined')
+
+	// ending a stream is twice forbidden
+	assert.throws(function() {
+		s.end();
+	});
+
+	// end() a stream with initial value
+	var s2 = stream(123);
+	s2.ends().log('end');
+	s2.end();
+	expectNoOutput();
+	s.tick();
+	expect('end 123');
+
+	// end() a stream that has a value set on the same tick
+	var s3 = stream().log('s3');
+	s3.ends().log('s3 end');
+	s3.set(1);
+	s3.end();
+	s.tick();
+	expect('s3 1; s3 end 1');
+
+	// end() a stream, and then set its value
+	var s4 = stream().log('s4');
+	s4.ends().log('s4 end');
+	s4.end();
+	expectNoOutput();
+	assert.throws(function() {
+		s4.set(1);
+	});
+	s.tick();
+	expect('s4 end undefined');
 };
 
 // Stream.log() -> Stream: Log my values.
@@ -520,7 +620,6 @@ test.Stream.log = function() {
 //
 
 Stream.prototype.map = function(f) {
-
 	function mapUpdate(value) {
 		this.newValue = this.f(value);
 	}
@@ -544,6 +643,17 @@ test.Stream.map = function() {
 	var s7 = s6.map(function() {
 		throw new Error("map() shouldn't try to pull its value if parent doesn't have it");
 	});
+
+	var s8 = stream(1);
+	var s9 = s8.map(inc);
+	s8.ends().log('s8 end');
+	s9.ends().log('s9 end');
+
+	s8.end();
+	stream.tick();
+	expect('s8 end 1');
+	stream.tick();
+	expect('s9 end 2');
 };
 
 Stream.prototype.filter = function(f) {
