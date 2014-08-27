@@ -17,6 +17,7 @@ function inc(x) { return x + 1; }
 function isEven(x) { return !(x % 2); }
 function isOdd(x) { return x % 2; }
 
+function id(x) { return x; }
 function nop() {}
 
 function contains(array, object) { return array.indexOf(object) !== -1; }
@@ -444,8 +445,30 @@ test.Stream.removeChild = function() {
 	});
 };
 
-// Stream.link(Stream parent, Function updater, Function f = null) -> Stream
-// Stream.link(Stream[] parents, Function updater, Function f = null) -> Stream
+// Stream.derive(Function update, optional Function f) -> Stream
+//
+// Return a stream that links itself to this stream with 'update' and sets
+// 'f'.  If 'this' has a value, the resulting dream pulls its value from
+// it.
+Stream.prototype.derive = function(update, f) {
+	return stream().link(this, update, f).pull();
+};
+
+test.Stream.derive = function() {
+	var parent = stream();
+	var child = parent.derive(nop, id);
+	assert.eq(parent.children.length, 1);
+	assert.eq(parent.parents.length, 0);
+	assert.eq(parent.children[0], child);
+	assert.eq(child.parents.length, 1);
+	assert.eq(child.children.length, 0);
+	assert.eq(child.parents[0], parent);
+	assert.eq(child.update, nop);
+	assert.eq(child.f, id);
+};
+
+// Stream.link(Stream parent, Function updater, optional Function f) -> Stream
+// Stream.link(Stream[] parents, Function updater, optional Function f) -> Stream
 //
 // Make this stream dependent of 'parents' through 'update' which
 // (optionally) calls 'f'.
@@ -474,7 +497,10 @@ Stream.prototype.link = function(parents, update, f) {
 
 	this.parents = parents;
 	this.update = update;
-	this.f = f || null;
+
+	if (f) {
+		this.f = f;
+	}
 
 	this.endWhenAny(parents);
 	return this;
@@ -654,7 +680,7 @@ Stream.prototype.map = function(f) {
 		this.newValue = this.f(value);
 	}
 
-	return stream().link(this, mapUpdate, f).pull();
+	return this.derive(mapUpdate, f);
 };
 
 test.Stream.map = function() {
@@ -687,14 +713,13 @@ test.Stream.map = function() {
 };
 
 Stream.prototype.filter = function(f) {
-
 	function filterUpdate(value) {
 		if (this.f(value)) {
 			this.newValue = value;
 		}
 	}
 
-	return stream().link(this, filterUpdate, f).pull();
+	return this.derive(filterUpdate, f);
 };
 
 test.Stream.filter = function() {
@@ -723,7 +748,7 @@ Stream.prototype.uniq = function() {
 		}
 	}
 
-	return stream().link(this, uniqUpdate).pull();
+	return this.derive(uniqUpdate);
 };
 
 test.Stream.uniq = function() {
