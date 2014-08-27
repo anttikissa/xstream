@@ -1183,14 +1183,14 @@ function collectTests(object, parentName, parentIdx) {
 
 		var title = 'Test ' + wholeIdx + ': ' + wholeName;
 		var testFunction = object[testName];
-		tests.push([title, testFunction]);
+		tests.push({ title: title, f: testFunction });
 		collectTests(object[testName], wholeName, wholeIdx);
 
 		testIdx++;
 	}
 }
 
-function testAll() {
+function runTests(matcher) {
 	collectTests(test);
 
 	var count = tests.length;
@@ -1202,12 +1202,14 @@ function testAll() {
 
 	function runTest() {
 		var nextTest = tests.shift();
+
 		if (!nextTest) {
 			finished();
 			return;
 		}
 
-		var title = nextTest[0], f = nextTest[1];
+
+		var title = nextTest.title, f = nextTest.f;
 
 		function done() {
 			assert.type(stream.cancelDeferredTick, 'undefined', 'test functions should not leave deferred .tick()s behind');
@@ -1215,12 +1217,17 @@ function testAll() {
 			defer(runTest);
 		}
 
+
 		try {
-			log(title + '\n');
-			if (f.length === 1) {
-				f(done);
+			if (matcher(nextTest)) {
+				log(title + '\n');
+				if (f.length === 1) {
+					f(done);
+				} else {
+					f();
+					done();
+				}
 			} else {
-				f();
 				done();
 			}
 		} catch (e) {
@@ -1233,7 +1240,19 @@ function testAll() {
 	runTest();
 }
 
-if (process.env.XSTREAM_TEST) {
-	testAll();
+var testsToRun = process.env.XSTREAM_TESTS;
+if (testsToRun) {
+	if (testsToRun === 'all') {
+		runTests(function() { return true; });
+	} else {
+		log("Running tests matching string '" + testsToRun + "'");
+
+		runTests(function(test) {
+			if (test.title.match(testsToRun)) {
+				return true;
+			}
+			return false;
+		});
+	}
 }
 
