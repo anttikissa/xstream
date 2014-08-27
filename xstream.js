@@ -596,10 +596,25 @@ test.Stream.ends = function() {
 	assert.eq(ends, s.ends(), 'ends() should always return the same stream');
 };
 
+Stream.prototype.cleanup = function() {
+	// unlink
+	for (var i = 0, len = this.parents.length; i < len; i++) {
+		this.parents[i].removeChild(this);
+	}
+	this.parents = [];
+	// delete listeners
+	this.listeners = [];
+};
+
+test.Stream.cleanup = function() {
+	// TODO
+};
+
 Stream.prototype.end = function() {
 	if (this.ended) {
-		throw new Error('cannot end() an ended stream');
+		return;
 	}
+	stream.streamsToUpdate.push(this);
 	this.ends().set(valueOf(this));
 	this.ended = true;
 };
@@ -613,10 +628,10 @@ test.Stream.end = function() {
 	s.tick();
 	expect('end undefined')
 
-	// ending a stream is twice forbidden
-	assert.throws(function() {
-		s.end();
-	});
+	// ending a stream twice has no further effect
+	s.end();
+	stream.tick();
+	expectNoOutput();
 
 	// end() a stream with initial value
 	var s2 = stream(123);
@@ -644,6 +659,19 @@ test.Stream.end = function() {
 	});
 	s.tick();
 	expect('s4 end undefined');
+
+	// ending a stream deletes its listeners and detaches it on the 
+	// following tick
+	var s = stream(1);
+	s2 = s.map(inc).forEach(nop);;
+	s2.end();
+	assert.eq(s2.parents.length, 1);
+	assert.eq(s2.listeners.length, 1);
+	log('pre', s2);
+	stream.tick();
+	log('post', s2);
+	assert.eq(s2.parents.length, 0);
+	assert.eq(s2.listeners.length, 0);
 };
 
 // Stream.log() -> Stream: Log my values.
@@ -784,8 +812,13 @@ test.Stream.uniq = function() {
 Stream.prototype.take = function(n) {
 	function takeUpdate(value) {
 		if (this.state-- <= 0) {
-			return;
-//			return this.end();
+//			return;
+
+			if (this.ended) {
+				throw new Error('test');
+			}
+			log('takeUpdate end(), this.ended', this.ended);
+			return this.end();
 		}
 		this.newValue = value;
 	}
@@ -804,6 +837,10 @@ test.Stream.take = function() {
 	s.take(3).log();
 	s.set(1).tick().set(2).tick().set(3).tick().set(4).tick().set(5).tick();
 	expect('1; 2; 3');
+};
+
+Stream.prototype.skip = function() {
+	// TODO
 };
 
 //
@@ -848,6 +885,9 @@ test.stream.ensureDeferredTick = function() {
 	assert.type(stream.cancelDeferredTick, 'undefined', 'there is no scheduled tick at the end of the tick, since the test framework would yell otherwise');
 };
 
+// List of streams that have seen a .set() or .end() during the
+// current tick.  .end() puts its victims here only because it causes
+// their .cleanup() method to be called.
 stream.streamsToUpdate = [];
 
 // updateOrder(Stream[] streams) -> Stream[]
@@ -934,6 +974,8 @@ stream.tick = function(n) {
 
 	stream.streamsToUpdate = [];
 
+	// Phase 1: call update function.
+	// This causes .newValues to be installed on derived streams.
 	for (var i = 0, len = streamsToUpdate.length; i < len; i++) {
 		var s = streamsToUpdate[i];
 		if (s.parents.some(hasNewValue)) {
@@ -943,10 +985,19 @@ stream.tick = function(n) {
 
 	for (var i = 0, len = streamsToUpdate.length; i < len; i++) {
 		var s = streamsToUpdate[i];
+
 		if (hasNewValue(s)) {
+			// Phase 2: move .newValue -> .value.
 			s.value = s.newValue;
 			delete s.newValue;
+
+			// Phase 3: call .forEach() handlers with new values.
 			s.broadcast();
+		}
+
+		// Phase 4: detach ended streams & wipe out their listeners.
+		if (s.ended) {
+			s.cleanup();
 		}
 	}
 
