@@ -3,10 +3,12 @@
 WF="node_modules/.bin/watch-file"
 SOURCES="xstream.js"
 
+TESTS=$1
+
 echo
 echo "Running tests and ./mk..."
 echo
-./test && ./mk
+./test $1 && ./mk
 
 echo
 echo "Watching file $SOURCES"...
@@ -18,6 +20,6 @@ do
 	echo
 	echo "Running tests and ./mk..."
 	echo
-	./test && ./mk
+	./test $1 && ./mk
 done
 

@@ -5,6 +5,10 @@
 # Run tests, optionally filtering only those that match string
 # If string is 'all' or unspecified, run all tests.
 #
+# TODO if there's a need to parallelize, do something like
+#
+#   ./test "2 % 5"     run tests whose idx % 5 == 2
+#
 # Example:
 #
 # ./test         run all tests
@@ -20,6 +24,7 @@ if [ "$TESTS" == "" ]; then TESTS=all; fi
 
 XSTREAM_TESTS=$TESTS node xstream.js
 
+# Old stuff
 #mkdir -p tmp
 #SOURCES="README.pre spec/*.pre docs/*.pre"
 #./mktest $SOURCES > tmp/test.js

@@ -457,6 +457,9 @@ test.Stream.removeChild = function() {
 // Alternatively, implement different .endWhenAny() and .endWhenAll()
 // strategies and use them.
 //
+// Streams linked with link() will end when any of the parent
+// streams end, but one tick later.  If streams need to end
+// transactionally at some point, try linking the end streams somehow.
 //
 Stream.prototype.link = function(parents, update, f) {
 	assert(this.parents.length === 0);
@@ -513,9 +516,38 @@ Stream.prototype.endWhenAny = function(streams) {
 };
 
 test.Stream.endWhenAny = function() {
+	var s1 = stream();
+	var s2 = stream();
+	var s3 = stream();
 
+	s3.endWhenAny([s1, s2]);
+	s3.ends().log('s3 end');
+	s1.set(1);
+	s2.set(2);
+	s3.set(3);
+
+	s1.end();
+	stream.tick(2);
+	expect('s3 end 3');
+
+	var ss1 = stream();
+	var ss2 = stream();
+	var ss3 = stream();
+
+	ss3.endWhenAny([ss1, ss2]);
+	ss3.ends().log('ss3 end');
+	ss1.set(1);
+	ss2.set(2);
+	ss3.set(3);
+
+	ss2.end();
+	stream.tick(2);
+	expect('ss3 end 3');
+
+	var s4 = stream();
+	s4.endWhenAny([]);
+	// Nothing to test, really, except that it won't throw
 };
-
 
 
 Stream.prototype.ends = function() {
@@ -543,8 +575,6 @@ Stream.prototype.end = function() {
 		throw new Error('cannot end() an ended stream');
 	}
 	this.ends().set(valueOf(this));
-	// A relatively stupid way to check that a stream is ended:
-	// it's .ended property is true
 	this.ended = true;
 };
 
