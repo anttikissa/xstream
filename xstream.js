@@ -150,7 +150,9 @@ assert.type = function(actual, expected, message) {
 	}
 };
 
-assert.throws = function(f) {
+assert.throws = function(f, message) {
+	message = message ? (': ' + message) : '';
+
 	try {
 		f();
 	} catch (e) {
@@ -160,12 +162,15 @@ assert.throws = function(f) {
 	// comments and extra whitespace (including newlines)
 	var functionEssence = f.toString().replace(/\/\/.*$/mg, '')
 		.replace(/\s+/g, ' ');
-	var e = new Error('assert failed: expected ' + functionEssence + ' to throw')
+	var e = new Error('assert failed' + message +
+		': expected ' + functionEssence +' to throw')
 	e.skipLines = 2;
 	throw e
 };
 
-function expect(string) { 
+function expect(string, message) {
+	message = message ? (message + ': ') : '';
+
 	var strings = [string];
 	if (contains(string, '; ')) {
 		strings = string.split('; ');
@@ -173,13 +178,15 @@ function expect(string) {
 	for (var i = 0; i < strings.length; i++) {
 		var expected = strings[i];
 		var actual = consoleOutput.shift();
-		assert(typeof actual === 'string', 'expected "' + expected + '", got no output', true);
-		assert(actual === expected, 'expected "' + expected + '", got "' + actual + '"', true);
+		assert(typeof actual !== 'undefined', message + 'expected "' + expected + '", got no output', true);
+		assert(actual === expected, message + 'expected "' + expected + '", got "' + actual + '"', true);
 	}
 }
 
-function expectNoOutput() {
-	assert(consoleOutput.length === 0, 'expected no output, got "' +
+function expectNoOutput(message) {
+	message = message ? (message + ': ') : '';
+
+	assert(consoleOutput.length === 0, message + 'expected no output, got "' +
 		consoleOutput[0] + '"', true);
 }
 
@@ -381,7 +388,7 @@ test.Stream.pull = function() {
 	child = stream();
 	child.parents = [parent];
 	parent.children = [child];
-	child.update = function(parent) {
+	child.update = function() {
 		throw new Error(".pull() should never call update() if there's no value");
 	};
 	child.pull();
@@ -530,14 +537,30 @@ test.Stream.link = function() {
 	expect('updating');
 	// then .forEach() handlers of both parent and child
 	expect('parent 1; child 2');
+
+	var s = stream().end();
+	var s2 = stream().link(s, nop);
+	assert(s2.ended, "linking to an ended stream should end the stream being linked");
+	stream.tick();
+
+	var s3 = stream().end();
+	var s4 = stream().end();
+	stream().link([s3, s4], nop).ends().log('end');
+	try {
+		stream.tick();
+	} catch (e) {
+		assert(false, "linking to multiple ended streams should be ok, too")
+	}
+	expectNoOutput();
 };
 
 Stream.prototype.endWhenAny = function(streams) {
-	var that = this;
 	for (var i = 0, len = streams.length; i < len; i++) {
-		streams[i].ends().forEach(function() {
-			that.end();
-		});
+		if (streams[i].ended) {
+			this.ended = true;
+			return;
+		}
+		streams[i].ends().forEach(this.end.bind(this));
 	}
 };
 
@@ -617,6 +640,7 @@ Stream.prototype.end = function() {
 	stream.streamsToUpdate.push(this);
 	this.ends().set(valueOf(this));
 	this.ended = true;
+	return this;
 };
 
 test.Stream.end = function() {
@@ -649,29 +673,32 @@ test.Stream.end = function() {
 	s.tick();
 	expect('s3 1; s3 end 1');
 
-	// end() a stream, and then set its value
 	var s4 = stream().log('s4');
 	s4.ends().log('s4 end');
 	s4.end();
 	expectNoOutput();
 	assert.throws(function() {
 		s4.set(1);
-	});
+	}, 'should not be able to set() an ended stream');
 	s.tick();
 	expect('s4 end undefined');
 
+	var s5 = stream();
+	var s5end = s5.end();
+	assert.eq(s5, s5end, 'end() should return the stream being ended');
+
 	// ending a stream deletes its listeners and detaches it on the 
 	// following tick
-	var s = stream(1);
-	s2 = s.map(inc).forEach(nop);;
-	s2.end();
-	assert.eq(s2.parents.length, 1);
-	assert.eq(s2.listeners.length, 1);
-	log('pre', s2);
+	var s6 = stream(1);
+	var s7 = s6.map(inc).forEach(nop);;
+	s7.end();
+	assert.eq(s7.parents.length, 1);
+	assert.eq(s7.listeners.length, 1);
+	log('pre', s7);
 	stream.tick();
-	log('post', s2);
-	assert.eq(s2.parents.length, 0);
-	assert.eq(s2.listeners.length, 0);
+	log('post', s7);
+	assert.eq(s7.parents.length, 0);
+	assert.eq(s7.listeners.length, 0);
 };
 
 // Stream.log() -> Stream: Log my values.
@@ -696,7 +723,6 @@ test.Stream.log = function() {
 	s.set(2);
 	stream.tick();
 	expect('2; prefix 2');
-
 };
 
 //
@@ -714,7 +740,7 @@ Stream.prototype.map = function(f) {
 test.Stream.map = function() {
 	var s = stream();
 	var s2 = s.map(inc).log('s2');
-	var s3 = s2.map(inc).log('s3');
+	s2.map(inc).log('s3');
 	s.set(1);
 	stream.tick();
 	expect('s2 2; s3 3');
@@ -724,7 +750,7 @@ test.Stream.map = function() {
 	assert.eq(s5.value, 2, 'if parent has a value, map() should pull it immediately');
 
 	var s6 = stream();
-	var s7 = s6.map(function() {
+	s6.map(function() {
 		throw new Error("map() shouldn't try to pull its value if parent doesn't have it");
 	});
 
@@ -733,10 +759,12 @@ test.Stream.map = function() {
 	s8.ends().log('s8 end');
 	s9.ends().log('s9 end');
 
+	// Mapped stream should end when the parent stream ends
 	s8.end();
 	stream.tick();
 	expect('s8 end 1');
 	stream.tick();
+	// One tick later, but end nonetheless.
 	expect('s9 end 2');
 };
 
@@ -767,6 +795,17 @@ test.Stream.filter = function() {
 	var evenParent = stream(2);
 	var evenChild = evenParent.filter(isOdd);
 	assert.type(evenChild.value, 'undefined', "filter should not pull() if filter doesn't match");
+
+	var s2 = stream(0);
+	s2.ends().log('s2 end');
+	var s3 = s2.filter(isOdd);
+	s3.ends().log('s3 end');
+	s2.end();
+	stream.tick();
+	expect('s2 end 0');
+	stream.tick();
+	assert(s3.ended, "filtered stream should end after parent stream ends");
+	expect('s3 end undefined');
 };
 
 Stream.prototype.uniq = function() {
@@ -783,7 +822,7 @@ test.Stream.uniq = function() {
 	assert.eq(stream(1).uniq().value, 1, "uniq() should pull its value immediately");
 	
 	var s1 = stream();
-	var s2 = s1.uniq().log();
+	s1.uniq().log();
 	s1.set(1);
 	stream.tick();
 	expect('1');
@@ -1076,20 +1115,19 @@ test.stream.combine = function() {
 	var s5 = stream.combine(stream(1), stream(2), plus);
 	assert.eq(s5.value, 3);
 
-	// combine should get its value atomically
 	var s6 = stream();
 	var s7 = stream();
-	var s8 = stream.combine(s6, s7, plus).log();
+	stream.combine(s6, s7, plus).log();
 	s6.set(1);
 	stream.tick();
-	expect('NaN');
+	expect('NaN', 'setting only one value should result in NaN');
 	s7.set(2);
 	stream.tick();
-	expect('3');
+	expect('3', 'setting the second value should give a sensible result');
 	s6.set(3); 
 	s7.set(4);
 	stream.tick();
-	expect('7');
+	expect('7', 'setting both values should result in only one update');
 };
 
 stream.combineWhenAll = function() {
@@ -1111,10 +1149,9 @@ test.stream.combineWhenAll = function() {
 	var s3 = stream.combineWhenAll(s1, s2, plus).log();
 	assert.type(s3.value, undefined, 'combine() should not pull if none of its parents have a value');
 
-	// set only one parent, should not get a value 
 	s2.set(1);
 	stream.tick();
-	expectNoOutput();
+	expectNoOutput('stream should not react when one of parents still lacks value');
 
 	s1.set(2);
 	stream.tick();
@@ -1133,14 +1170,14 @@ test.stream.combineWhenAll = function() {
 	var s8 = stream.combineWhenAll(s6, s7, plus).log();
 	s6.set(1);
 	stream.tick();
-	expectNoOutput();
+	expectNoOutput('setting value to one parent results in no action');
 	s7.set(2);
 	stream.tick();
-	expect('3');
+	expect('3', 'setting value to second parent results updates combined stream');
 	s6.set(3); 
 	s7.set(4);
 	stream.tick();
-	expect('7');
+	expect('7', 'setting value to both parents only causes a single update');
 };
 
 // stream.merge(Stream streams...) -> Stream: Merge multiple streams.
