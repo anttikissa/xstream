@@ -694,9 +694,7 @@ test.Stream.end = function() {
 	s7.end();
 	assert.eq(s7.parents.length, 1);
 	assert.eq(s7.listeners.length, 1);
-	log('pre', s7);
 	stream.tick();
-	log('post', s7);
 	assert.eq(s7.parents.length, 0);
 	assert.eq(s7.listeners.length, 0);
 };
