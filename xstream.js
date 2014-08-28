@@ -59,25 +59,16 @@ function valueOf(s) {
 	return s.value;
 }
 
-// Implementation of 'defer' using process.nextTick().
-function deferNextTick(f) {
-	var canceled = false;
-
-	function run() {
-		if (!canceled) {
-			f();
-		}
-	}
-
-	process.nextTick(run);
-
+// Implementation of 'defer' using setTimeout().
+function deferSetImmediate(f) {
+	var immediate = setImmediate(f);
 	return function() {
-		canceled = true;
-	};
+		clearImmediate(immediate);
+	}
 }
 
 // Implementation of 'defer' using setTimeout().
-function deferTimeout(f) {
+function deferSetTimeout(f) {
 	var timeout = setTimeout(f);
 	return function() {
 		clearTimeout(timeout);
@@ -87,7 +78,7 @@ function deferTimeout(f) {
 // defer(Function f) -> Function: Call 'f' at a later time.
 // Return a function that can be called to cancel the the deferred call.
 var defer = typeof process !== 'undefined' && process.nextTick
-	? deferNextTick : deferTimeout;
+	? deferSetImmediate : deferSetTimeout;
 
 // Terminate the process.  For tests.
 function terminate() {
