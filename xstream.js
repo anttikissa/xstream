@@ -808,10 +808,10 @@ Stream.prototype.uniq = function() {
 };
 
 test.Stream.uniq = function() {
-	assert.eq(stream(1).uniq().value, 1, "uniq() should pull its value immediately");
+	assert.eq(stream(1).uniq().value, 1, 'uniq() should pull its value immediately');
 	
 	var s1 = stream();
-	s1.uniq().log();
+	var s2 = s1.uniq().log();
 	s1.set(1);
 	stream.tick();
 	expect('1');
@@ -826,8 +826,7 @@ test.Stream.uniq = function() {
 	stream.tick();
 	s1.set(NaN);
 	stream.tick();
-	// uniq() does not filter out duplicate NaNs, because NaN !== NaN
-	expect('NaN; NaN');
+	expect('NaN; NaN', 'uniq() should not filter out duplicate NaNs, because NaN !== NaN');
 
 	s1.set([1, 2]);
 	stream.tick();
@@ -835,6 +834,14 @@ test.Stream.uniq = function() {
 	stream.tick();
 	// nor does it do a deep compare
 	expect('[ 1, 2 ]; [ 1, 2 ]');
+
+	s1.end();
+	s2.ends().log('s2 end');
+	expectNoOutput();
+	stream.tick();
+	expectNoOutput('this is the tick when the parent stream ends');
+	stream.tick();
+	expect('s2 end [ 1, 2 ]', 'stream created with uniq() should end when parent ends');
 };
 
 Stream.prototype.take = function(n) {
