@@ -589,10 +589,9 @@ test.Stream.endWhenAny = function() {
 	// Nothing to test, really, except that it won't throw
 };
 
-
 Stream.prototype.ends = function() {
 	if (!this.endStream) {
-		this.endStream = stream(); //.withState(this);;
+		this.endStream = stream();
 	}
 	return this.endStream;
 };
@@ -846,36 +845,84 @@ test.Stream.uniq = function() {
 
 Stream.prototype.take = function(n) {
 	function takeUpdate(value) {
-		if (this.state-- <= 0) {
-//			return;
-
-			if (this.ended) {
-				throw new Error('test');
-			}
-			log('takeUpdate end(), this.ended', this.ended);
+		if (this.state <= 0) {
 			return this.end();
 		}
 		this.newValue = value;
 	}
 
-	// Can't call .pull() because .update() will modify this
-	// stream's state. Should maybe separate the check and the take
-	// into different functions, like generators (will) do.
-	return stream().withState(n).link(this, takeUpdate);
+	return this.derive(takeUpdate).withState(n).forEach(function() {
+		this.state--;
+	});
 };
 
 test.Stream.take = function() {
-//	assert.eq(stream(123).take(5).value, 123, 'take() should pull');
-//	assert.eq(stream(123).take(0).value, 123, 'even when n == 0');
+	assert.eq(stream(123).take(5).value, 123, 'take() should pull');
+	// TODO I wonder if this is the right semantics
+	assert.eq(stream(123).take(0).value, 123, 'even when when n === 0');
 
 	var s = stream();
 	s.take(3).log();
 	s.set(1).tick().set(2).tick().set(3).tick().set(4).tick().set(5).tick();
 	expect('1; 2; 3');
+
+	var s2 = stream();
+	var s3 = s2.take(1);
+	s2.set(1);
+	s3.ends().log('s3 end');
+	s2.end();
+	stream.tick(2);
+	expect('s3 end 1', 'stream returned by take() should end within two ticks');
 };
 
-Stream.prototype.skip = function() {
-	// TODO
+Stream.prototype.skip = function(n) {
+	function skipUpdate(value) {
+		if (this.state > 0) {
+			this.state--;
+			return;
+		}
+
+		this.newValue = value;
+	}
+
+	var result = stream().withState(n).link(this, skipUpdate);
+	if (n === 0) {
+		result.pull();
+	}
+	return result;
+};
+
+test.Stream.skip = function() {
+	var s = stream();
+	s.skip(3).log('s2').ends().log('s2 end');
+	s.set(1).tick();
+	s.set(2).tick();
+	s.set(3).tick();
+	expectNoOutput('first 3 ticks should do nothing');
+	s.set(4).tick();
+	expect('s2 4', 'following 2 ticks should update the value');
+	s.set(5).tick();
+	expect('s2 5', 'following 2 ticks should update the value');
+	s.end();
+	stream.tick();
+	stream.tick();
+	expect('s2 end 5');
+	
+	var s3 = stream(1);
+	var s4 = s3.skip(3);
+	assert.eq(s4.value, undefined, 'stream returned by skip() should not pull its value');
+
+	var s5 = stream(1);
+	var s6 = s3.skip(0);
+	assert.eq(s4.value, undefined, 'except when n === 0, since skip(0) should be equivalent to the stream itself');
+
+	// though this kinda contradicts the 'should be equivalent to the
+	// stream itself', since they don't end on the same tick
+	s4.ends().log('s4 end');
+	s3.end();
+	stream.tick(2);
+	expect('s4 end undefined', 'stream returned by skip() should end within two ticks');
+
 };
 
 //
