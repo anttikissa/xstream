@@ -545,6 +545,19 @@ test.Stream.link = function() {
 	expectNoOutput();
 };
 
+// TODO consider using other mechanism than .forEach() (i.e. linking
+// the end streams), since occasionally I tripped by expecting things
+// like
+//
+// var s = stream();
+// var s2 = s.map(f);
+// s2.ends().forEach(function() { /* do something */ });
+// s.end().tick();
+// /* expect 'something' to be done */
+//
+// Then again, it happens mostly in test functions that need to do .tick()
+// all the time to get synchronous results, maybe it's not so much
+// an issue in real life.
 Stream.prototype.endWhenAny = function(streams) {
 	for (var i = 0, len = streams.length; i < len; i++) {
 		if (streams[i].ended) {
@@ -922,7 +935,60 @@ test.Stream.skip = function() {
 	s3.end();
 	stream.tick(2);
 	expect('s4 end undefined', 'stream returned by skip() should end within two ticks');
+};
 
+Stream.prototype.slidingWindow = function(n) {
+	function slidingWindowUpdate(value) {
+		this.newValue = this.value.concat(value);
+		if (this.newValue.length > this.state) {
+			this.newValue.shift();
+		}
+	}
+
+	var result = stream([]);
+	return result.link(this, slidingWindowUpdate).withState(n).pull();
+};
+
+test.Stream.slidingWindow = function() {
+	var s1 = stream();
+	var s2 = s1.slidingWindow(3).log();
+	s2.ends().log('end');
+	s1.set(1).tick();
+	expect('[ 1 ]');
+	s1.set(2).tick();
+	expect('[ 1, 2 ]');
+	s1.set(3).tick();
+	expect('[ 1, 2, 3 ]');
+	s1.set(4).tick();
+	expect('[ 2, 3, 4 ]', 'sliding window should drops the first elements when it grows to full size');
+	s1.end().tick(2);
+	expect('end [ 2, 3, 4 ]');
+
+	var s3 = stream();
+	s3.slidingWindow(2).ends().log('sliding end');
+	s3.end();
+	stream.tick(2);
+	expect('sliding end []', 'slidingWindow() without any input should end with the empty array');
+
+	var s4 = stream(123);
+	var s5 = s4.slidingWindow(2);
+	s5.ends().log('sliding end');
+	stream.log(s5.value);
+	expect('[ 123 ]', 'slidingWindow() should pull initial value');
+	s4.end();
+	stream.tick(2);
+	expect('sliding end [ 123 ]', 'and end with it');
+
+	var s6 = stream();
+	var s7 = s6.slidingWindow(0).log();
+//	assert.eq(s7.value, [], 'slidingWindow of length 0 works');
+	s6.set(123).tick();
+	expect('[]', 'but its value never changes from []');
+};
+
+// Yields the last n elements of a stream after the stream has ended.
+Stream.prototype.leave = function(n) {
+	// TODO
 };
 
 //
