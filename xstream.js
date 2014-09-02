@@ -1138,6 +1138,53 @@ test.Stream.slice = function() {
 	expect('3; 4; 5; 6; 7; end 7');
 };
 
+Stream.prototype.reduce = function(f, initial) {
+	function reduceUpdater(value) {
+		if (this.value !== undefined) {
+			log('produce newValue', this.value, 'and', value);
+			this.newValue = this.f(this.value, value);
+		} else {
+			this.newValue = value;
+			log('newValue is just ', value);
+		}
+	}
+
+	return stream(initial).setup(this, reduceUpdater, f);
+};
+
+test.Stream.reduce = function() {
+	// Basic use case
+	var nums = stream.fromArray([1,2,3,4,5]);
+	nums.reduce(plus).log().ends().log('end');
+	stream.tick(6);
+	expect('1; 3; 6; 10; 15; end 15');
+
+	var chars = stream.fromArray(['a', 'b', 'c']);
+	var collected = chars.reduce(function(x, y) { return x.concat(y); }, []);
+	collected.log();
+	stream.tick(5);
+	expect("[ 'a' ]; [ 'a', 'b' ]; [ 'a', 'b', 'c' ]");
+
+	var s = stream(1);
+	var interrupted = s.reduce(plus, 123);
+	interrupted.ends().log('end');
+	s.end();
+	stream.tick();
+	expect('end 123', 'reduced stream with no input should end with initial value');
+};
+
+Stream.prototype.collect = function() {
+	return this.reduce(function(array, x) {
+		return array.concat(x);
+	}, []);
+};
+
+test.Stream.collect = function() {
+	stream.fromArray([1,2,3]).collect().log();
+	stream.tick(10);
+	expect('[ 1 ]; [ 1, 2 ]; [ 1, 2, 3 ]');
+};
+
 //
 // Chapter 5 - stream general functions
 // 
