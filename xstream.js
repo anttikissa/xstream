@@ -465,11 +465,11 @@ test.Stream.removeChild = function() {
 
 // Stream.derive(Function update, optional Function f) -> Stream
 //
-// Return a stream that links itself to this stream with 'update' and sets
+// Return a stream that setups itself to this stream with 'update' and sets
 // 'f'.  If 'this' has a value, the resulting dream pulls its value from
 // it.
 Stream.prototype.derive = function(update, f) {
-	return stream().link(this, update, f).pull();
+	return stream().setup(this, update, f).pull();
 };
 
 test.Stream.derive = function() {
@@ -485,35 +485,23 @@ test.Stream.derive = function() {
 	assert.is(child.f, id);
 };
 
-// Stream.link(Stream parent, Function updater, optional Function f) -> Stream
-// Stream.link(Stream[] parents, Function updater, optional Function f) -> Stream
+// Stream.setup(Stream parent, Function updater, optional Function f) -> Stream
+// Stream.setup(Stream[] parents, Function updater, optional Function f) -> Stream
 //
 // Make this stream dependent of 'parents' through 'update' which
 // (optionally) calls 'f'.
 //
-// TODO consider splitting into .link(parent) and .linkMany(parents)
-// and parameterizing them with how to link ends and errors, if deemed
-// necessary.
+// Streams created with setup() will end when any of the parent
+// streams end.
 //
-// Alternatively, implement different .endWhenAny() and .endWhenAll()
-// strategies and use them.
-//
-// Streams linked with link() will end when any of the parent
-// streams end, but one tick later.  If streams need to end
-// transactionally at some point, try linking the end streams somehow.
-//
-Stream.prototype.link = function(parents, update, f) {
+Stream.prototype.setup = function(parents, update, f) {
 	assert(this.parents.length === 0);
 
 	if (parents instanceof Stream) {
 		parents = [parents];
 	}
 
-	for (var i = 0, len = parents.length; i < len; i++) {
-		parents[i].addChild(this);
-	}
-
-	this.parents = parents;
+	this.link(parents);
 	this.update = update;
 
 	if (f) {
@@ -521,17 +509,18 @@ Stream.prototype.link = function(parents, update, f) {
 	}
 
 	this.endWhenAny(parents);
+
 	return this;
 };
 
-test.Stream.link = function() {
+test.Stream.setup = function() {
 	var parent = stream().log('parent');
 	var child = stream().log('child');
 	var update = function(value) {
 		stream.log('updating');
 		this.newValue = this.f(value);
 	};
-	var result = child.link(parent, update, inc);
+	var result = child.setup(parent, update, inc);
 	assert.is(result, child);
 	assert(contains(parent.children, child));
 	assert(contains(child.parents, parent));
@@ -550,22 +539,22 @@ test.Stream.link = function() {
 	expect('parent 1; child 2');
 
 	var s = stream().end();
-	var s2 = stream().link(s, nop);
-	assert(s2.ended, "linking to an ended stream should end the stream being linked");
+	var s2 = stream().setup(s, nop);
+	assert(s2.ended, "setuping to an ended stream should end the stream being setuped");
 	stream.tick();
 
 	var s3 = stream().end();
 	var s4 = stream().end();
-	stream().link([s3, s4], nop).ends().log('end');
+	stream().setup([s3, s4], nop).ends().log('end');
 	try {
 		stream.tick();
 	} catch (e) {
-		assert(false, "linking to multiple ended streams should be ok, too")
+		assert(false, "setuping to multiple ended streams should be ok, too")
 	}
 	expectNoOutput();
 };
 
-// TODO consider using other mechanism than .forEach() (i.e. linking
+// TODO consider using other mechanism than .forEach() (i.e. setuping
 // the end streams), since occasionally I tripped by expecting things
 // like
 //
@@ -584,7 +573,16 @@ Stream.prototype.endWhenAny = function(streams) {
 			this.ended = true;
 			return;
 		}
-		streams[i].ends().forEach(this.end.bind(this));
+
+		streams[i]
+//		streams[i].ends().forEach(this.end.bind(this));
+	}
+
+	this.ends().link(streams.map(function(stream) { return stream.ends(); }));
+	this.ends().update = function() {
+		log('!!! end update called');
+		this.newValue = valueOf(this.state);
+		this.state.ended = true;
 	}
 };
 
@@ -624,7 +622,8 @@ test.Stream.endWhenAny = function() {
 
 Stream.prototype.ends = function() {
 	if (!this.endStream) {
-		this.endStream = stream();
+		// By convention, end streams' state is the master stream.
+		this.endStream = stream().withState(this);
 	}
 	return this.endStream;
 };
@@ -662,12 +661,20 @@ test.Stream.onEnd = function() {
 	assert(called, 'but only after one tick');
 };
 
+Stream.prototype.link = function(parents) {
+	for (var i = 0, len = parents.length; i < len; i++) {
+		parents[i].addChild(this);
+	}
+
+	this.parents = parents;
+};
+
 Stream.prototype.unlink = function() {
 	for (var i = 0, len = this.parents.length; i < len; i++) {
 		this.parents[i].removeChild(this);
 	}
 	this.parents = [];
-}
+};
 
 test.Stream.unlink = function() {
 	var parent1 = stream(1);
@@ -778,7 +785,7 @@ Stream.prototype.rewire = function(newParent) {
 
 	this.unlink();
 
-	return this.link(newParent, rewireUpdate).pull();
+	return this.setup(newParent, rewireUpdate).pull();
 };
 
 test.Stream.rewire = function() {
@@ -806,11 +813,10 @@ test.Stream.rewire = function() {
 	s4.rewire(s3);
 	assert.eq(s4.value, 10, 'rewire pulls value immediately');
 
-	// TODO ends() is implemented the wrong way. Of course.
-//	s2.end().tick(2);
-//	expectNoOutput('rewired stream should not end when the original parent ends');
+	s2.end().tick();
+	expectNoOutput('rewired stream should not end when the original parent ends');
 
-	s3.end().tick(2);
+	s3.end().tick();
 	expect('s4 end 10', 'rewired stream should end when the new parent ends');
 };
 
@@ -963,8 +969,6 @@ test.Stream.uniq = function() {
 	s2.ends().log('s2 end');
 	expectNoOutput();
 	stream.tick();
-	expectNoOutput('this is the tick when the parent stream ends');
-	stream.tick();
 	expect('s2 end [ 1, 2 ]', 'stream created with uniq() should end when parent ends');
 };
 
@@ -996,8 +1000,8 @@ test.Stream.take = function() {
 	s2.set(1);
 	s3.ends().log('s3 end');
 	s2.end();
-	stream.tick(2);
-	expect('s3 end 1', 'stream returned by take() should end within two ticks');
+	stream.tick();
+	expect('s3 end 1', 'stream returned by take() should end when parent ends');
 };
 
 Stream.prototype.skip = function(n) {
@@ -1010,7 +1014,7 @@ Stream.prototype.skip = function(n) {
 		this.newValue = value;
 	}
 
-	var result = stream().withState(n).link(this, skipUpdate);
+	var result = stream().withState(n).setup(this, skipUpdate);
 	if (n === 0) {
 		result.pull();
 	}
@@ -1045,8 +1049,8 @@ test.Stream.skip = function() {
 	// stream itself', since they don't end on the same tick
 	s4.ends().log('s4 end');
 	s3.end();
-	stream.tick(2);
-	expect('s4 end undefined', 'stream returned by skip() should end within two ticks');
+	stream.tick();
+	expect('s4 end undefined', 'stream returned by skip() should end when parent ends');
 };
 
 Stream.prototype.slidingWindow = function(n) {
@@ -1058,7 +1062,7 @@ Stream.prototype.slidingWindow = function(n) {
 	}
 
 	var result = stream([]);
-	return result.link(this, slidingWindowUpdate).withState(n).pull();
+	return result.setup(this, slidingWindowUpdate).withState(n).pull();
 };
 
 test.Stream.slidingWindow = function() {
@@ -1073,13 +1077,13 @@ test.Stream.slidingWindow = function() {
 	expect('[ 1, 2, 3 ]');
 	s1.set(4).tick();
 	expect('[ 2, 3, 4 ]', 'sliding window should drops the first elements when it grows to full size');
-	s1.end().tick(2);
+	s1.end().tick();
 	expect('end [ 2, 3, 4 ]');
 
 	var s3 = stream();
 	s3.slidingWindow(2).ends().log('sliding end');
 	s3.end();
-	stream.tick(2);
+	stream.tick();
 	expect('sliding end []', 'slidingWindow() without any input should end with the empty array');
 
 	var s4 = stream(123);
@@ -1110,8 +1114,7 @@ Stream.prototype.leave = function(n) {
 };
 
 test.Stream.leave = function() {
-	return;
-	var s = stream.fromArray([1,2,3,4,5]).leave(3);
+	var s = stream.fromArray([1,2,3,4,5]).leave(3).log();
 	s.ends().log('end');
 
 	stream.tick(5);
@@ -1327,7 +1330,7 @@ stream.combine = function() {
 		this.newValue = this.f.apply(null, arguments);
 	}
 
-	return stream().link(parents, combineUpdate, f).pull();
+	return stream().setup(parents, combineUpdate, f).pull();
 };
 
 test.stream.combine = function() {
@@ -1373,7 +1376,7 @@ stream.combineWhenAll = function() {
 		}
 	}
 
-	return stream().link(parents, combineWhenAllUpdate, f).pull();
+	return stream().setup(parents, combineWhenAllUpdate, f).pull();
 };
 
 test.stream.combineWhenAll = function() {
@@ -1429,7 +1432,7 @@ stream.merge = function() {
 		}
 	}
 
-	return stream().link(parents, mergeUpdater);
+	return stream().setup(parents, mergeUpdater);
 }
 
 test.stream.merge = function() {
