@@ -367,7 +367,7 @@ test.Stream.forEach = function() {
 };
 
 Stream.prototype.pull = function() {
-	// TODO repeats code from tick().
+	// Repeats code from tick().  Do something.  Maybe.
 	if (this.parents.some(hasValue)) {
 		this.update.apply(this, this.parents.map(valueOf));
 	}
@@ -554,33 +554,16 @@ test.Stream.setup = function() {
 	expectNoOutput();
 };
 
-// TODO consider using other mechanism than .forEach() (i.e. setuping
-// the end streams), since occasionally I tripped by expecting things
-// like
-//
-// var s = stream();
-// var s2 = s.map(f);
-// s2.ends().forEach(function() { /* do something */ });
-// s.end().tick();
-// /* expect 'something' to be done */
-//
-// Then again, it happens mostly in test functions that need to do .tick()
-// all the time to get synchronous results, maybe it's not so much
-// an issue in real life.
 Stream.prototype.endWhenAny = function(streams) {
 	for (var i = 0, len = streams.length; i < len; i++) {
 		if (streams[i].ended) {
 			this.ended = true;
 			return;
 		}
-
-		streams[i]
-//		streams[i].ends().forEach(this.end.bind(this));
 	}
 
 	this.ends().link(streams.map(function(stream) { return stream.ends(); }));
 	this.ends().update = function() {
-		log('!!! end update called');
 		this.newValue = valueOf(this.state);
 		this.state.ended = true;
 	}
@@ -653,10 +636,9 @@ test.Stream.onEnd = function() {
 		assert.is(s, this, 'context should be the original stream');
 		assert.is(value, 1, 'and the value its final value');;
 		called = true;
-		// TODO
 	});
 	s.end();
-	assert(!called, 'onEnd() handler should be called immediately');
+	assert(!called, 'onEnd() handler should not be called immediately');
 	stream.tick();
 	assert(called, 'but only after one tick');
 };
