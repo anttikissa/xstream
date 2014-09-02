@@ -13,6 +13,7 @@
 // Chapter 1 - Internal utilities
 //
 function plus(x, y) { return x + y; }
+function mul(x, y) { return x * y; }
 function inc(x) { return x + 1; }
 function isEven(x) { return !(x % 2); }
 function isOdd(x) { return x % 2; }
@@ -641,18 +642,67 @@ test.Stream.ends = function() {
 	assert.is(ends, s.ends(), 'ends() should always return the same stream');
 };
 
-Stream.prototype.cleanup = function() {
-	// unlink
+Stream.prototype.onEnd = function(f) {
+	this.ends().forEach(f.bind(this));
+	return this;
+};
+
+test.Stream.onEnd = function() {
+	var s = stream(1);
+	var called = false;
+	s.onEnd(function(value) {
+		assert.is(s, this, 'context should be the original stream');
+		assert.is(value, 1, 'and the value its final value');;
+		called = true;
+		// TODO
+	});
+	s.end();
+	assert(!called, 'onEnd() handler should be called immediately');
+	stream.tick();
+	assert(called, 'but only after one tick');
+};
+
+Stream.prototype.unlink = function() {
 	for (var i = 0, len = this.parents.length; i < len; i++) {
 		this.parents[i].removeChild(this);
 	}
 	this.parents = [];
+}
+
+test.Stream.unlink = function() {
+	var parent1 = stream(1);
+	var parent2 = stream(2);
+	var child = stream.combine(parent1, parent2, plus);
+	assert.is(child.parents.length, 2);
+	assert.is(parent1.children.length, 1);
+	assert.is(parent2.children.length, 1);
+	child.unlink();
+	assert.is(child.parents.length, 0);
+	assert.is(parent1.children.length, 0);
+	assert.is(parent2.children.length, 0);
+};
+
+Stream.prototype.cleanup = function() {
+	this.unlink();
+
 	// delete listeners
 	this.listeners = [];
 };
 
 test.Stream.cleanup = function() {
-	// TODO
+	var parent = stream(1);
+	var child = parent.map(inc).log();
+	var unlinkCalled = false;
+	child.unlink = function() {
+		assert.is(child, this);
+		unlinkCalled = true;
+		Stream.prototype.unlink.call(this);
+	};
+	assert(!unlinkCalled, 'unlink has not been called before');
+	assert(child.listeners.length > 0, 'child should have listeners');
+	child.cleanup();
+	assert(unlinkCalled, 'it should call unlink on child');
+	assert.is(child.listeners.length, 0, 'it should clean up listeners');
 };
 
 Stream.prototype.end = function() {
@@ -712,13 +762,56 @@ test.Stream.end = function() {
 	// ending a stream deletes its listeners and detaches it on the 
 	// following tick
 	var s6 = stream(1);
-	var s7 = s6.map(inc).forEach(nop);;
+	var s7 = s6.map(inc).forEach(nop);
 	s7.end();
 	assert.is(s7.parents.length, 1);
 	assert.is(s7.listeners.length, 1);
 	stream.tick();
 	assert.is(s7.parents.length, 0);
 	assert.is(s7.listeners.length, 0);
+};
+
+Stream.prototype.rewire = function(newParent) {
+	function rewireUpdate(value) {
+		this.newValue = value;
+	}
+
+	this.unlink();
+
+	return this.link(newParent, rewireUpdate).pull();
+};
+
+test.Stream.rewire = function() {
+	var s1 = stream(1);
+	s1.map(inc).log();
+	s1.set(1);
+	stream.tick();
+	expect('2');
+
+	s1.rewire(stream.combine(stream(5),
+		stream.fromArray([1,2,3]),
+		mul));
+
+	stream.tick(7);
+	expect('6; 11; 16', 'rewire() produces values derived from the new stream');
+
+	var s2 = stream(1);
+	var s3 = stream(10);
+	var s4 = s2.map(inc).log('s4');
+	s4.ends().log('s4 end');
+	assert.eq(s4.value, 2);
+	s2.set(2).tick();
+	expect('s4 3');
+
+	s4.rewire(s3);
+	assert.eq(s4.value, 10, 'rewire pulls value immediately');
+
+	// TODO ends() is implemented the wrong way. Of course.
+//	s2.end().tick(2);
+//	expectNoOutput('rewired stream should not end when the original parent ends');
+
+	s3.end().tick(2);
+	expect('s4 end 10', 'rewired stream should end when the new parent ends');
 };
 
 // Stream.log() -> Stream: Log my values.
@@ -1007,7 +1100,24 @@ test.Stream.slidingWindow = function() {
 
 // Yields the last n elements of a stream after the stream has ended.
 Stream.prototype.leave = function(n) {
-	// TODO
+	var slidingWindow = this.slidingWindow(n);
+	var result = stream();
+
+	slidingWindow.onEnd(function(values) {
+		result.rewire(stream.fromArray(values));
+	});
+	return result;
+};
+
+test.Stream.leave = function() {
+	return;
+	var s = stream.fromArray([1,2,3,4,5]).leave(3);
+	s.ends().log('end');
+
+	stream.tick(5);
+	expectNoOutput();
+	stream.tick(5);
+	expect('3; 4; 5; end 5');
 };
 
 //
@@ -1058,15 +1168,10 @@ test.stream.ensureDeferredTick = function() {
 stream.streamsToUpdate = [];
 
 // updateOrder(Stream[] streams) -> Stream[]
-// 
-// Given an array of streams to update, create a graph of those streams
-// and their dependencies and return a topological ordering of that graph
-// where parents come before their children.
 //
-// nodes: array of Streams
-//
-// The algorithm assumes that 'nodes' only contains a single instance of
-// each stream.
+// Find all streams reachable from 'streams' through parent -> child
+// relations in topological order (parents always come before their
+// descendants).
 //
 // TODO is this really such a complicated operation?
 //
@@ -1367,8 +1472,7 @@ stream.fromArray = function(array) {
 		if (next !== undefined) {
 			this.set(next);
 		} else {
-			// TODO fiction
-//			this.end();
+			this.end();
 		}
 	};
 
@@ -1406,9 +1510,10 @@ stream.fromArray = function(array) {
 };
 
 test.stream.fromArray = function() {
-	stream.fromArray([1, 2, 3, 4]).log();
+	var a = stream.fromArray([1, 2, 3, 4]).log();
+	a.ends().log('end');
 	stream.tick(5);
-	expect('1; 2; 3; 4');
+	expect('1; 2; 3; 4; end 4');
 };
 
 test.stream.fromArray.stop = function() {
@@ -1438,6 +1543,7 @@ test.stream.fromArray.play = function() {
 	s.play();
 	stream.tick();
 	expect('5');
+	stream.tick(); // required for it to end
 };
 
 //
