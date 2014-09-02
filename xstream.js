@@ -651,6 +651,16 @@ Stream.prototype.link = function(parents) {
 	this.parents = parents;
 };
 
+test.Stream.link = function() {
+	var parent1 = stream();
+	var parent2 = stream();
+	var child = stream();
+	child.link([parent1, parent2]);
+	assert.is(child.parents.length, 2);
+	assert.is(parent1.children[0], child);
+	assert.is(parent2.children[0], child);
+};
+
 Stream.prototype.unlink = function() {
 	for (var i = 0, len = this.parents.length; i < len; i++) {
 		this.parents[i].removeChild(this);
