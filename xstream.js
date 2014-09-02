@@ -598,7 +598,7 @@ test.Stream.endWhenAny = function() {
 	s3.set(3);
 
 	s1.end();
-	stream.tick(2);
+	stream.tick();
 	expect('s3 end 3');
 
 	var ss1 = stream();
@@ -612,7 +612,7 @@ test.Stream.endWhenAny = function() {
 	ss3.set(3);
 
 	ss2.end();
-	stream.tick(2);
+	stream.tick();
 	expect('ss3 end 3');
 
 	var s4 = stream();
@@ -1092,7 +1092,7 @@ test.Stream.slidingWindow = function() {
 	stream.log(s5.value);
 	expect('[ 123 ]', 'slidingWindow() should pull initial value');
 	s4.end();
-	stream.tick(2);
+	stream.tick();
 	expect('sliding end [ 123 ]', 'and end with it');
 
 	var s6 = stream();
