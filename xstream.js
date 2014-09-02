@@ -564,6 +564,10 @@ Stream.prototype.endWhenAny = function(streams) {
 
 	this.ends().link(streams.map(function(stream) { return stream.ends(); }));
 	this.ends().update = function() {
+		// Prevent stream from ending twice.
+		if (this.state.ended) {
+			return;
+		}
 		this.newValue = valueOf(this.state);
 		this.state.ended = true;
 	}
@@ -994,6 +998,12 @@ test.Stream.take = function() {
 	s2.end();
 	stream.tick();
 	expect('s3 end 1', 'stream returned by take() should end when parent ends');
+
+
+	stream.fromArray([1,2,3,4,5]).take(2).ends().log('end')
+	stream.tick(10);
+	expect('end 2');
+	expectNoOutput('end listener should be called only once');
 };
 
 Stream.prototype.skip = function(n) {
@@ -1113,6 +1123,19 @@ test.Stream.leave = function() {
 	expectNoOutput();
 	stream.tick(5);
 	expect('3; 4; 5; end 5');
+};
+
+Stream.prototype.slice = function(start, end) {
+	if (end === undefined) {
+		return this.skip(start);
+	}
+	return this.skip(start).take(end - start);
+};
+
+test.Stream.slice = function() {
+	stream.fromArray([0,1,2,3,4,5,6,7,8,9,10]).slice(3, 8).log().ends().log('end');
+	stream.tick(20);
+	expect('3; 4; 5; 6; 7; end 7');
 };
 
 //
