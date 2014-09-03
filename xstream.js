@@ -580,7 +580,7 @@ Stream.prototype.endWhenAny = function(streams) {
 		}
 		this.newValue = valueOf(this.state);
 		this.state.ended = true;
-	}
+	};
 };
 
 test.Stream.endWhenAny = function() {
@@ -1589,29 +1589,34 @@ test.stream.combineWhenAll = function() {
 	expect('7', 'setting value to both parents only causes a single update');
 };
 
+// Shared between .merge() and .mergeAll().
+function mergeUpdate() {
+	for (var i = 0, len = this.parents.length; i < len; i++) {
+		var parent = this.parents[i];
+		if (hasNewValue(parent)) {
+			this.newValue = parent.newValue;
+		}
+	}
+}
+
 // stream.merge(Stream streams...) -> Stream: Merge multiple streams.
 // 
 // Only ever sets its value when some of its parent stream updates, i.e.
 // it never pulls its value.
 stream.merge = function() {
 	var parents = copyArray(arguments);
+	return stream().setup(parents, mergeUpdate);
 
-	function mergeUpdater() {
-		var parents = this.parents;
-		for (var i = 0, len = parents.length; i < len; i++) {
-			if (hasNewValue(parents[i])) {
-				this.newValue = parents[i].newValue;
-			}
-		}
-	}
-
-	return stream().setup(parents, mergeUpdater);
+	// TODO make it so that merge() only ends after all of the streams
+	// have ended.
 }
 
 test.stream.merge = function() {
 	var s1 = stream(1);
 	var s2 = stream(2);
 	var s3 = stream.merge(s1, s2).log();
+
+	s3.ends().log('end');
 
 	assert.type(s3.value, 'undefined', 'merge() does not pull.');
 
@@ -1634,6 +1639,97 @@ test.stream.merge = function() {
 	s1.set('a');
 	stream.tick();
 	expect('b');
+
+	s1.end().tick();
+	expectNoOutput('one end() should not end the merged stream');
+	s2.end().tick();
+	expect('end b', 'but the last one should');
+
+};
+
+//
+// Chapter 7 - Metastream operators
+//
+
+
+// Stream.mergeAll(): merge all streams yielded by this stream.
+//
+// For implementation reasons, starts to listen to new streams
+// only one tick after 'this' has yielded it.
+//
+// Like 'merge', if two or more streams that are being merged yield
+// a value during the same tick, the one that comes last (in 'this')
+// wins.
+//
+// If that hurts, it can be fixed with 'update' trickery.  Maybe.
+//
+// Also known as flatMap() in other frameworks.
+Stream.prototype.mergeAll = function() {
+	var result = stream();
+
+	this.forEach(function(stream) {
+		result.parents.push(stream);
+		stream.addChild(result);
+	});
+
+	result.update = mergeUpdate;
+	// TODO fix this
+//	result.endWhenAny([this]);
+
+	return result;
+};
+
+test.Stream.mergeAll = function() {
+	var s = stream();
+	s.mergeAll().log().ends().log('end');
+	var s1 = stream();
+	s.set(s1).tick();
+	s1.set(1).tick();
+	expect('1');
+
+	var s2 = stream();
+	s.set(s2).tick();
+	s2.set(2).tick();
+	expect('2');
+
+	var s3 = stream();
+	s.set(s3).tick();
+	s3.set(3).tick();
+	expect('3');
+
+	s2.set('a').tick();
+	expect('a');
+	s1.set('b').tick();
+	expect('b');
+	s1.set('x');
+	s3.set('y');
+	stream.tick();
+	expect('y'); // note: no x
+
+	s1.end().tick();
+	expectNoOutput('when one merged stream ends, nothing happens');
+	s2.end().tick();
+	s3.end().tick();
+	expectNoOutput('actually all of them can end, still nothing');
+
+	// TODO fix me; probably should end only after all of yielded streams
+	// plus the parent stream has ended
+	s.end().tick();
+//	expect('however...');
+};
+
+// Like mergeAll(), but only listen to the latest stream yielded by 'this'.
+Stream.prototype.followLatest = function() {
+	var result = stream();
+	this.forEach(function(stream) {
+		this.rewire(result);
+	});
+	return result;
+};
+
+// This might prove to be a tricky one.
+Stream.prototype.concatAll = function() {
+
 };
 
 //
