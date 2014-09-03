@@ -345,6 +345,16 @@ test.Stream.broadcast = function() {
 	expect('first 123; second 123');
 };
 
+Stream.prototype.withName = function(name) {
+	this.name = name;
+	return this;
+};
+
+test.Stream.withName = function() {
+	assert.is(stream().name, undefined);
+	assert.is(stream().withName('hello').name, 'hello');
+};
+
 Stream.prototype.forEach = function(listener) {
 	this.listeners.push(listener);
 	return this;
@@ -1301,6 +1311,59 @@ function updateOrder(nodes) {
 	return nodesToUpdate;
 }
 
+test.updateOrder = function() {
+	function id(stream) {
+		return 's' + stream.id;
+	}
+
+	function printIds(streams) {
+		return streams.map(id).join(' ');
+	}
+
+	// Simplest case: one independent stream
+	var s = stream();
+	var order = updateOrder([s]);
+	assert.eq(printIds(order), printIds([s]), 'updateOrder([s]) is [s] if no deps');
+
+	// One dependency, s2 -> s3
+	var s2 = stream();
+	var s3 = s2.map(inc);
+
+	order = updateOrder([s2]);
+	assert.eq(printIds(order), printIds([s2, s3]));
+
+	// More complex network:
+	// s4   s7
+	//  |\  /
+	// s5 s6 s9
+	//  \ | /
+	//    s8
+	var s4 = stream();
+	var s5 = s4.map(inc);
+	var s7 = stream();
+	var s6 = stream.combine(s4, s7, plus);
+	var s9 = stream();
+	var s8 = stream.combine(s5, s6, s9, function() { return 1; });
+
+	order = updateOrder([s7]);
+	assert.eq(printIds(order), printIds([s7, s6, s8]), 'one update in a more complex graph');
+
+	order = updateOrder([s9, s2]);
+	assert.eq(printIds(order), printIds([s2, s3, s9, s8]), 'updates in distinct topologies');
+
+	// The order in which distinct updates is (probably) implementation
+	// specific, so they might fail some day -- but here's a test anyway
+	order = updateOrder([s2, s9]);
+	assert.eq(printIds(order), printIds([s2, s3, s9, s8]), 'updates in distinct topologies');
+
+	order = updateOrder([s9, s4]);
+	assert.eq(printIds(order), printIds([s4, s5, s6, s9, s8]), 'parents should come before children in complex case');
+
+	order = updateOrder([s8]);
+	assert.eq(printIds(order), printIds([s8]), 'updateOrder should not get incoming dependencies');
+
+};
+
 stream.tick = function(n) {
 	if (stream.cancelDeferredTick) {
 		stream.cancelDeferredTick();
@@ -1345,16 +1408,15 @@ stream.tick = function(n) {
 
 test.stream.tick = function() {
 	// The actual functionality of 'tick' is in fact tested in lots of
-	// places; see tests for Stream.set(), Stream.forEach(), 
-	// stream.ensureDeferredTick, etc.  So we just test giving
-	// '.tick(n)' an argument, which should tick 'n' times.
-	
+	// places; see tests for Stream.set(), Stream.forEach(),
+	// stream.ensureDeferredTick, etc.
+
 	// A simple counter.
 	var s = stream();
-	function inc(value) {
+	function update(value) {
 		this.set(value + 1);
 	}
-	s.forEach(inc);
+	s.forEach(update);
 	s.set(0);
 	stream.tick();
 	assert.is(s.value, 0);
@@ -1367,7 +1429,7 @@ test.stream.tick = function() {
 	stream.tick();
 
 	s.set(0);
-	s.forEach(inc);
+	s.forEach(update);
 	stream.tick();
 	assert.is(s.value, 0);
 	// Now call it 5 times.
@@ -1375,9 +1437,37 @@ test.stream.tick = function() {
 	assert.is(s.value, 5);
 
 	// A crude way to stop the stream from ticking.
-	// TODO when there's .stop(), use that.
 	s.listeners = [];
 	stream.tick();
+
+	var plus3called = 0;
+
+	function plus3(a, b, c) {
+		plus3called++;
+		return a + b + c;
+	}
+
+	var source = stream(1);
+	var left1 = source.map(inc);
+	var middle1 = source.map(inc);
+	var right1 = source.map(inc);
+	var left2 = stream.combine(left1, middle1, right1, plus3);
+	var middle2 = stream.combine(left1, middle1, right1, plus3);
+	var right2 = stream.combine(left1, middle1, right1, plus3);
+	var left3 = stream.combine(left2, middle2, right2, plus3);
+	var middle3 = stream.combine(left2, middle2, right2, plus3);
+	var right3 = stream.combine(left2, middle2, right2, plus3);
+	var result = stream.combine(left3, middle3, right3, plus3).log();
+
+	assert.is(plus3called, 7, 'plus3 called once per stream that uses it');
+	stream.tick();
+	assert.is(plus3called, 7, 'plus3 not called in vain');
+	source.set(2);
+	stream.tick();
+	assert.is(plus3called, 14, 'plus3 not called on tick()');
+	expect('81');
+
+
 };
 
 //
@@ -1426,6 +1516,27 @@ test.stream.combine = function() {
 	s7.set(4);
 	stream.tick();
 	expect('7', 'setting both values should result in only one update');
+
+	function plus3(a, b, c) {
+		return a + b + c;
+	}
+
+	// Some indirect combining
+	var source = stream(1);
+	var left1 = source.map(inc);
+	var middle1 = source.map(inc);
+	var right1 = source.map(inc);
+	var left2 = stream.combine(left1, middle1, right1, plus3);
+	var middle2 = stream.combine(left1, middle1, right1, plus3);
+	var right2 = stream.combine(left1, middle1, right1, plus3);
+
+	var result = stream.combine(left2, middle2, right2, plus3).log();
+
+	assert.is(result.value, 18);
+
+	source.set(2);
+	stream.tick();
+	expect('27');
 };
 
 stream.combineWhenAll = function() {
